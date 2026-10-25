@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { SCHEMA_STATEMENTS } from "./schema";
-import { pollsOpenIso } from "./time";
+import { migrateLegacySite } from "./legacy-migrate";
+import { INDEX_STATEMENTS, SCHEMA_STATEMENTS } from "./schema";
 
 export type RunResult = { changes: number };
 
@@ -158,13 +158,10 @@ export async function migrate(db: Db): Promise<void> {
   for (const statement of SCHEMA_STATEMENTS) {
     await db.exec(statement);
   }
-  try {
-    await db.exec(`ALTER TABLE groups ADD COLUMN election_start TEXT`);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!/duplicate column|already exists/i.test(message)) throw error;
+  await migrateLegacySite(db);
+  for (const statement of INDEX_STATEMENTS) {
+    await db.exec(statement);
   }
-  await db.run(`UPDATE groups SET election_start = ? WHERE election_start IS NULL`, [pollsOpenIso()]);
 }
 
 export async function createSqliteDb(filename: string): Promise<Db> {

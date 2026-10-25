@@ -89,3 +89,28 @@ export type AdminParticipant = {
   joinedAt: string;
   complete: boolean;
 };
+
+export type BoardMetric = "euclidean" | "absolute";
+
+/** A public national-board row. No seat vector. */
+export type GlobalStanding = {
+  rank: number;
+  absoluteRank: number;
+  alias: string;
+  groupName: string;
+  groupCode: string;
+  euclidean: number;
+  absolute: number;
+  groupRank: number;
+  groupAbsoluteRank: number;
+};
+
+export type GlobalBoard = {
+  metric: BoardMetric;
+  page: number;
+  pageSize: number;
+  total: number;
+  pageCount: number;
+  scoreable: boolean;
+  rows: GlobalStanding[];
+};

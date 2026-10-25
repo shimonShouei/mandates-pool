@@ -3,6 +3,7 @@ import { adminCookieMatches, adminCookieValue } from "./auth";
 
 const ADMIN_COOKIE = "mandates_admin";
 const TOKEN_COOKIE = "mandates_tokens";
+const GROUP_ADMIN_COOKIE = "mandates_group_admins";
 
 function cookieOptions() {
   return {
@@ -64,4 +65,30 @@ export async function clearToken(groupId: string) {
   const map = await tokenMap();
   delete map[groupId];
   jar.set(TOKEN_COOKIE, JSON.stringify(map), cookieOptions());
+}
+
+async function readJsonCookie(name: string): Promise<Record<string, string>> {
+  const jar = await cookies();
+  const raw = jar.get(name)?.value;
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+export async function readGroupAdminToken(groupId: string): Promise<string | null> {
+  const map = await readJsonCookie(GROUP_ADMIN_COOKIE);
+  const token = map[groupId];
+  return typeof token === "string" ? token : null;
+}
+
+export async function writeGroupAdminToken(groupId: string, token: string) {
+  const jar = await cookies();
+  const map = await readJsonCookie(GROUP_ADMIN_COOKIE);
+  map[groupId] = token;
+  jar.set(GROUP_ADMIN_COOKIE, JSON.stringify(map), cookieOptions());
 }

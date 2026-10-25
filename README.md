@@ -1,17 +1,17 @@
 # מנדטים
 
-ניחוש מושבים לכנסת, בשביל שמעון והחברים. כל משתתף מחלק 120 מנדטים. אחרי הספירה, מי שהכי קרוב לתוצאה מנצח.
+ניחוש מושבים לכנסת. כל אחד פותח קבוצה, והמשתתפים מחלקים 120 מנדטים. אחרי הספירה, מי שהכי קרוב לתוצאה מנצח.
 
-הממשק בעברית, מימין לשמאל, ונוח בטלפון.
+הממשק בעברית, מימין לשמאל, ונוח בטלפון. אפשר להוסיף את האתר למסך הבית. אין אפליקציה בחנות.
 
 ## איך זה עובד
 
-1. המנהל נכנס עם `ADMIN_SECRET`, יוצר קבוצה, ומעתיק את הקישור.
+1. בדף הבית נותנים שם לקבוצה. מי שפתח אותה מקבל קישור ניהול פרטי, שנשמר בדפדפן. הסוד `ADMIN_SECRET` לא נדרש לניהול קבוצה.
 2. כל חבר נכנס עם הקישור ובוחר כינוי (אפשר שם בדוי). אין סיסמה. הדפדפן שומר אסימון, ורק האסימון הזה יכול לערוך את הניחוש.
 3. מחלקים מספרים שלמים שסכומם 120. ערך בין 1 ל-3 מקבל אזהרה: אחוז החסימה הוא 3.25%, ורשימה שלא עוברת אותו מקבלת 0.
-4. הניחושים ננעלים אוטומטית ב-07:00 שעון ישראל ביום הבחירות (27 באוקטובר 2026 לקבוצה חדשה), כשהקלפיות נפתחות. המנהל יכול להקדים את הנעילה, לא לאחר אותה. אחרי הנעילה אי אפשר להצטרף או לשנות ניחוש.
-5. התוצאות נמשכות מאתר ועדת הבחירות המרכזית. אם המשיכה נכשלת, מעלים את דף התוצאות מהדפדפן או מזינים מנדטים ידנית.
-6. הדירוג הציבורי מציג רק כינוי, מקום וציון. אף אחד, כולל המנהל, לא רואה את חלוקת המושבים של מישהו אחר. את הפער מול כל מפלגה רואים רק בניחוש שלכם.
+4. הניחושים ננעלים אוטומטית ב-07:00 שעון ישראל ביום הבחירות (27 באוקטובר 2026 לקבוצה חדשה), כשהקלפיות נפתחות. מנהל הקבוצה יכול להקדים את הנעילה, לא לאחר אותה. אחרי הנעילה אי אפשר להצטרף או לשנות ניחוש.
+5. התוצאות, רשימת המפלגות והסכמי העודפים משותפים לכל הקבוצות. אותם מושך או מזין רק מי שנכנס עם `ADMIN_SECRET` אל `/admin`. אם המשיכה מוועדת הבחירות נכשלת, מעלים את דף התוצאות מהדפדפן או מזינים מנדטים ידנית.
+6. הדירוג של הקבוצה מציג רק כינוי, מקום וציון. הדירוג הארצי ב-`/board` מוסיף את שם הקבוצה ואת המקום של אותו אדם בתוך הקבוצה שלו. אף אחד לא רואה את חלוקת המושבים של מישהו אחר. מנהל קבוצה יכול להוציא את הקבוצה מהדירוג הארצי. ברירת המחדל היא להופיע.
 
 המנצח נקבע לפי **מרחק אוקלידי**: שורש הסכום של ריבועי ההפרשים בין הניחוש לתוצאה. נמוך יותר עדיף. בדירוג מופיע גם **סכום הסטיות המוחלטות**, ואפשר למיין לפיו. שתי הפונקציות חיות ב-`lib/scoring.ts`.
 
@@ -26,13 +26,19 @@ npm run dev
 
 ערכו את `.env.local` והחליפו את `ADMIN_SECRET`. בלי `DATABASE_URL` האפליקציה שומרת על SQLite ב-`data/mandates.db`.
 
-פתחו את דף הבית, היכנסו ל`/admin`, צרו קבוצה, ושלחו את הקישור.
+פתחו את דף הבית וצרו קבוצה. הקישור לחברים הוא `/g/<קוד>`. את קישור הניהול שומרים בנפרד. `ADMIN_SECRET` נדרש רק ל-`/admin`.
+
+יצירת קבוצה מוגבלת לחמש קבוצות בשעה מאותה כתובת רשת. שם קבוצה הוא 2 עד 40 תווים.
+
+## הוספה למסך הבית
+
+בכרום או באדג' מופיע «התקנת אפליקציה» או «הוספה למסך הבית». באייפון, בספארי: שיתוף ואז «הוספה למסך הבית». האתר נפתח בעברית מימין לשמאל, בלי חלון הדפדפן. זה אתר (PWA), לא אפליקציה מחנות.
 
 ## משתני סביבה
 
 | משתנה | חובה | משמעות |
 | --- | --- | --- |
-| `ADMIN_SECRET` | כן | סוד המנהל. לא סיסמה של משתתף. |
+| `ADMIN_SECRET` | לניהול האתר | סוד לתוצאות, לרשימות ולהסכמי העודפים. לא נדרש כדי לפתוח קבוצה. |
 | `CRON_SECRET` | בפרודקשן | וורסל שולחת `Authorization: Bearer <CRON_SECRET>` אל הרענון המתוזמן. |
 | `DATABASE_URL` | על ורסל | מחרוזת Postgres, למשל Neon או Supabase. מקומית אפשר בלי. |
 | `RESULTS_SOURCE_URL` | לא | כתובת חלופית לדף התוצאות, אם רוצים לעקוף את ברירת המחדל. |
@@ -47,7 +53,7 @@ SQLite לא נשמר על ורסל. צריך Postgres.
 3. ב-[Vercel](https://vercel.com) בחרו Import Project, וחברו את הריפו. הפריימוורק מזוהה כ-Next.js.
 4. הגדירו בסביבה של הפרויקט: `ADMIN_SECRET`, `CRON_SECRET`, `DATABASE_URL`.
 5. פרסו. הכתובת תהיה מהצורה `https://<project>.vercel.app`.
-6. היכנסו אל `https://<project>.vercel.app/admin`, צרו קבוצה, ושלחו את `https://<project>.vercel.app/g/<קוד>`.
+6. שלחו את `https://<project>.vercel.app`. כל אחד פותח קבוצה מדף הבית. `https://<project>.vercel.app/board` הוא הדירוג הארצי. `https://<project>.vercel.app/admin` מיועד רק למי שמחזיק ב-`ADMIN_SECRET`.
 
 `vercel.json` קובע רענון כל חמש דקות ב-`/api/cron/refresh-results`. במסלול Hobby של ורסל המגבלה בפועל היא לרוב פעם ביום. בנוסף, כל פתיחה של הדירוג מרעננת לבד אם הצילום האחרון ישן משלוש דקות, אז ערב הבחירות מספיק שמישהו ישאיר את הדף פתוח.
 
@@ -55,7 +61,7 @@ SQLite לא נשמר על ורסל. צריך Postgres.
 
 הזרע הוא הרשימות הגדולות **לכנסת ה-26**, לפי רשימת המועמדים שוועדת הבחירות פרסמה ועודכנה ב-22 באוקטובר 2026. אושרו 38 רשימות. כאן נזרעות הגדולות: הליכוד (מחל), ביחד (רק), ישר! (דרך), הדמוקרטים (אמת), ש"ס (שס), יהדות התורה (ג), עוצמה יהודית (ב), ישראל ביתנו (ל), הציונות הדתית וזהות (ט), רע"ם (עם), הרשימה המשותפת (ודם), המילואימניקים (די), עמך ישראל (ך).
 
-צריך לבדוק את הרשימה לפני הנעילה. רע"ם והרשימה המשותפת אושרו בספטמבר על תנאי. כחול לבן (כן) מסומנת באתר הרשמי כרשימה שאינה מתמודדת, ולכן היא לא בזרע. המנהל מוסיף, מוחק ומשנה שמות ומאותיות.
+צריך לבדוק את הרשימה לפני הנעילה. רע"ם והרשימה המשותפת אושרו בספטמבר על תנאי. כחול לבן (כן) מסומנת באתר הרשמי כרשימה שאינה מתמודדת, ולכן היא לא בזרע. מנהל האתר מוסיף, מוחק ומשנה שמות ומאותיות. השינוי חל על כל הקבוצות.
 
 ## מאיפה מגיעות התוצאות
 
@@ -90,13 +96,19 @@ SQLite לא נשמר על ורסל. צריך Postgres.
 
 # Mandatim
 
-A Hebrew, right-to-left pool for predicting how the 120 Knesset seats will split. Built for Shimon and friends.
+A Hebrew, right-to-left site for predicting how the 120 Knesset seats will split. Anyone can open a named group. It is an installable site (add to home screen), not an app-store app.
 
 ## Rules
 
+The homepage creates a group. The creator becomes that group's admin through a private link stored in an httpOnly cookie. `ADMIN_SECRET` is only for the shared official results, the party list, and surplus agreements. Those are the same for every group.
+
 Participants join with an invite link and a nickname. A random token in an httpOnly cookie is the only credential, and it can edit only that browser's guess. Guesses are whole numbers totaling 120. Values from 1 to 3 warn that they cannot occur under the 3.25% threshold.
 
-Guesses lock automatically at 07:00 Asia/Jerusalem on election day, when polling stations open. A new group defaults to 27 October 2026. The admin can set an earlier lock, and cannot keep guesses open past polls opening. The clock follows Israel daylight saving time. After the lock, joining and editing are rejected on the server. The public leaderboard shows nickname, rank, and score only. Per-party guesses and per-party diffs are returned solely to the participant who owns the token. The admin participant list shows whether a guess totals 120, not the numbers. `GET /api/groups/[code]/leaderboard` is `Cache-Control: private, no-store` and is covered by tests that a caller's payload does not contain anyone else's seat vector.
+Guesses lock automatically at 07:00 Asia/Jerusalem on election day, when polling stations open. A new group defaults to 27 October 2026. The group admin can set an earlier lock, and cannot keep guesses open past polls opening. The clock follows Israel daylight saving time. After the lock, joining and editing are rejected on the server.
+
+A group's board shows nickname, rank, and score only. The national board at `/board` adds the group name and that person's rank inside their own group. It is paginated (40 rows). Groups are included unless their admin opts out. Per-party guesses are never on a public payload. `GET /api/leaderboard` returns the same public fields. `GET /api/groups/[code]/leaderboard` stays `Cache-Control: private, no-store`.
+
+Public creation allows 5 new groups per hour per network address. A group name is 2 to 40 characters.
 
 The winner is the lowest **Euclidean distance** between the guess vector and the actual vector. The leaderboard also shows the **sum of absolute errors**, and can be sorted by it. Both functions are isolated in `lib/scoring.ts`.
 
@@ -109,7 +121,9 @@ npm test
 npm run dev
 ```
 
-Without `DATABASE_URL`, data is stored in SQLite at `data/mandates.db`. Set `ADMIN_SECRET` before using `/admin`.
+Without `DATABASE_URL`, data is stored in SQLite at `data/mandates.db`. Open the homepage to create a group. Set `ADMIN_SECRET` before using `/admin`.
+
+Install from Chrome or Edge with “Install app” / “Add to home screen”. On iPhone, use Safari’s Share sheet and “Add to Home Screen”. The installed site stays Hebrew and right-to-left.
 
 ## Deploy so friends have a public URL
 
@@ -117,13 +131,13 @@ Without `DATABASE_URL`, data is stored in SQLite at `data/mandates.db`. Set `ADM
 2. Push this repo to GitHub.
 3. Import it on [Vercel](https://vercel.com) as a Next.js app.
 4. Set `ADMIN_SECRET`, `CRON_SECRET`, and `DATABASE_URL`. SQLite will not persist on Vercel; the app refuses to boot there without `DATABASE_URL`.
-5. Open `https://<project>.vercel.app/admin`, create a group, and share `https://<project>.vercel.app/g/<code>`.
+5. Share `https://<project>.vercel.app`. People create their own groups there. `/board` is the national leaderboard. `/admin` is only for the `ADMIN_SECRET` holder.
 
 `vercel.json` schedules `/api/cron/refresh-results` every five minutes. Vercel Hobby often only runs crons once a day. Opening the leaderboard also refreshes when the latest snapshot is older than three minutes, which is the practical path on Hobby.
 
 ## Parties
 
-The seed is the major lists for the **26th Knesset**, taken from the Central Elections Committee candidate list as updated on 22 October 2026. Thirty-eight lists were approved; only the competitive ones are seeded (Likud, Beyachad, Yashar!, The Democrats, Shas, United Torah Judaism, Otzma Yehudit, Yisrael Beiteinu, Religious Zionism–Zehut, Ra'am, the Joint List, the Miluimnikim list, and Amkha). Check them before locking. Ra'am and the Joint List were conditionally approved in September. Blue and White was marked as not running, so it is not seeded. The admin can add, rename, and remove lists. A list that already has guesses cannot be deleted.
+The seed is the major lists for the **26th Knesset**, taken from the Central Elections Committee candidate list as updated on 22 October 2026. Thirty-eight lists were approved; only the competitive ones are seeded (Likud, Beyachad, Yashar!, The Democrats, Shas, United Torah Judaism, Otzma Yehudit, Yisrael Beiteinu, Religious Zionism–Zehut, Ra'am, the Joint List, the Miluimnikim list, and Amkha). Check them before locking. Ra'am and the Joint List were conditionally approved in September. Blue and White was marked as not running, so it is not seeded. The site admin can add, rename, and remove lists, and the change applies to every group. A list that already has guesses cannot be deleted.
 
 ## Official results
 

@@ -1,6 +1,6 @@
+import { safeEqual } from "./auth";
 import type { Db } from "./db";
 import { cleanDisplayName, hashToken, nameKey, newCode, newId, newToken } from "./ids";
-import { SEED_PARTIES } from "./parties";
 import type { AdminParticipant, OwnView, PublicGroupState, PublicResults } from "./public-state";
 import { decideSeats, type PartyRef } from "./results/decide";
 import type { ParsedList, ParsedResults } from "./results/parse-cec";
@@ -17,7 +17,6 @@ export class GameError extends Error {
 
 export type Party = {
   id: string;
-  groupId: string;
   name: string;
   ballot: string;
   color: string;
@@ -39,17 +38,21 @@ type GroupRow = {
   code: string;
   deadline: string | null;
   election_start: string | null;
-  knesset_number: number;
-  prefer_computed_seats: number;
-  results_override: number;
+  public_board: number;
+  admin_token_hash: string | null;
   created_at: string;
-  last_fetch_attempt_at: string | null;
-  last_fetch_error: string | null;
+};
+
+export type SiteSettings = {
+  knessetNumber: number;
+  preferComputed: boolean;
+  resultsOverride: boolean;
+  lastFetchAttemptAt: string | null;
+  fetchError: string | null;
 };
 
 type SnapshotRow = {
   id: string;
-  group_id: string;
   fetched_at: string;
   status: "provisional" | "final";
   source: "official" | "upload" | "manual";
@@ -83,32 +86,26 @@ export async function createGroup(
   deadlineIso: string | null = null,
   electionStartIso: string | null = null,
 ) {
-  const clean = name.normalize("NFKC").replace(/\s+/g, " ").trim();
-  if (clean.length < 1 || clean.length > 60) {
-    throw new GameError("שם הקבוצה צריך להיות בין 1 ל-60 תווים.");
+  const raw = name.normalize("NFKC");
+  if (/[\u0000-\u001f]/.test(raw)) throw new GameError("שם הקבוצה צריך להיות בין 2 ל-40 תווים.");
+  const clean = raw.replace(/\s+/g, " ").trim();
+  if (clean.length < 2 || clean.length > 40) {
+    throw new GameError("שם הקבוצה צריך להיות בין 2 ל-40 תווים.");
   }
   const electionStart = electionStartIso ?? pollsOpenIso();
   if (Number.isNaN(Date.parse(electionStart))) throw new GameError("שעת פתיחת הקלפיות לא תקינה.");
+  const adminToken = newToken();
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const id = newId();
     const code = newCode();
     const now = new Date().toISOString();
     try {
-      await db.transaction(async (tx) => {
-        await tx.run(
-          `INSERT INTO groups (id, name, code, deadline, election_start, knesset_number, prefer_computed_seats, results_override, created_at)
-           VALUES (?, ?, ?, ?, ?, 26, 0, 0, ?)`,
-          [id, clean, code, deadlineIso, electionStart, now],
-        );
-        for (const [index, party] of SEED_PARTIES.entries()) {
-          await tx.run(
-            `INSERT INTO parties (id, group_id, name, ballot, color, sort_order, match_keys, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [newId(), id, party.name, party.ballot, party.color, index, JSON.stringify(party.matchKeys), now],
-          );
-        }
-      });
-      return { id, code, name: clean };
+      await db.run(
+        `INSERT INTO groups (id, name, code, deadline, election_start, public_board, admin_token_hash, created_at)
+         VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+        [id, clean, code, deadlineIso, electionStart, hashToken(adminToken), now],
+      );
+      return { id, code, name: clean, adminToken };
     } catch (error) {
       if (isUnique(error) && attempt < 4) continue;
       throw error;
@@ -139,46 +136,111 @@ export async function updateGroup(
     name?: string;
     deadline?: string | null;
     electionStart?: string;
-    knessetNumber?: number;
-    preferComputed?: boolean;
+    publicBoard?: boolean;
   },
 ) {
   const group = await mustGroup(db, groupId);
-  const name = patch.name == null ? group.name : patch.name.normalize("NFKC").replace(/\s+/g, " ").trim();
-  if (name.length < 1 || name.length > 60) throw new GameError("שם הקבוצה צריך להיות בין 1 ל-60 תווים.");
-  const knesset = patch.knessetNumber ?? group.knessetNumber;
-  if (!Number.isInteger(knesset) || knesset < 20 || knesset > 40) {
-    throw new GameError("מספר הכנסת לא נראה נכון.");
+  let name = group.name;
+  if (patch.name != null) {
+    const raw = patch.name.normalize("NFKC");
+    if (/[\u0000-\u001f]/.test(raw)) throw new GameError("שם הקבוצה צריך להיות בין 2 ל-40 תווים.");
+    name = raw.replace(/\s+/g, " ").trim();
   }
+  if (name.length < 2 || name.length > 40) throw new GameError("שם הקבוצה צריך להיות בין 2 ל-40 תווים.");
   const electionStart = patch.electionStart ?? group.electionStart;
   if (Number.isNaN(Date.parse(electionStart))) throw new GameError("שעת פתיחת הקלפיות לא תקינה.");
   await db.run(
-    `UPDATE groups SET name = ?, deadline = ?, election_start = ?, knesset_number = ?, prefer_computed_seats = ? WHERE id = ?`,
+    `UPDATE groups SET name = ?, deadline = ?, election_start = ?, public_board = ? WHERE id = ?`,
     [
       name,
       patch.deadline === undefined ? group.deadline : patch.deadline,
       electionStart,
-      knesset,
-      patch.preferComputed == null ? (group.preferComputed ? 1 : 0) : patch.preferComputed ? 1 : 0,
+      patch.publicBoard == null ? (group.publicBoard ? 1 : 0) : patch.publicBoard ? 1 : 0,
       groupId,
     ],
   );
-  if (patch.preferComputed != null) await recomputeCurrent(db, groupId);
+  await touchBoard(db);
 }
 
-export async function listParties(db: Db, groupId: string): Promise<Party[]> {
+export async function updateGroupAsAdmin(
+  db: Db,
+  groupId: string,
+  token: string | null,
+  patch: {
+    name?: string;
+    deadline?: string | null;
+    electionStart?: string;
+    publicBoard?: boolean;
+  },
+) {
+  if (!(await isGroupAdmin(db, groupId, token))) {
+    throw new GameError("נדרש קישור הניהול של הקבוצה.");
+  }
+  await updateGroup(db, groupId, patch);
+}
+
+export async function getSite(db: Db): Promise<SiteSettings> {
+  const row = await db.get<{
+    knesset_number: number;
+    prefer_computed_seats: number;
+    results_override: number;
+    last_fetch_attempt_at: string | null;
+    last_fetch_error: string | null;
+  }>(`SELECT * FROM site WHERE id = 'site'`);
+  if (!row) throw new GameError("הגדרות האתר לא נמצאו.");
+  return {
+    knessetNumber: Number(row.knesset_number) || 26,
+    preferComputed: Number(row.prefer_computed_seats) === 1,
+    resultsOverride: Number(row.results_override) === 1,
+    lastFetchAttemptAt: row.last_fetch_attempt_at,
+    fetchError: row.last_fetch_error,
+  };
+}
+
+export async function updateSite(
+  db: Db,
+  patch: { knessetNumber?: number; preferComputed?: boolean },
+) {
+  const site = await getSite(db);
+  const knesset = patch.knessetNumber ?? site.knessetNumber;
+  if (!Number.isInteger(knesset) || knesset < 20 || knesset > 40) {
+    throw new GameError("מספר הכנסת לא נראה נכון.");
+  }
+  await db.run(`UPDATE site SET knesset_number = ?, prefer_computed_seats = ? WHERE id = 'site'`, [
+    knesset,
+    patch.preferComputed == null ? (site.preferComputed ? 1 : 0) : patch.preferComputed ? 1 : 0,
+  ]);
+  if (patch.preferComputed != null) await recomputeCurrent(db);
+}
+
+export async function isGroupAdmin(db: Db, groupId: string, token: string | null): Promise<boolean> {
+  if (!token) return false;
+  const row = await db.get<{ admin_token_hash: string | null }>(
+    `SELECT admin_token_hash FROM groups WHERE id = ?`,
+    [groupId],
+  );
+  if (!row?.admin_token_hash) return false;
+  return safeEqual(row.admin_token_hash, hashToken(token));
+}
+
+export async function rotateGroupAdmin(db: Db, groupId: string) {
+  const group = await mustGroup(db, groupId);
+  const adminToken = newToken();
+  await db.run(`UPDATE groups SET admin_token_hash = ? WHERE id = ?`, [hashToken(adminToken), groupId]);
+  return { code: group.code, adminToken };
+}
+
+export async function listParties(db: Db): Promise<Party[]> {
   const rows = await db.all<{
     id: string;
-    group_id: string;
     name: string;
     ballot: string;
     color: string;
     sort_order: number;
     match_keys: string;
-  }>(`SELECT * FROM parties WHERE group_id = ? ORDER BY sort_order, name`, [groupId]);
+  }>(`SELECT * FROM parties ORDER BY sort_order, name`);
   return rows.map((row) => ({
     id: row.id,
-    groupId: row.group_id,
     name: row.name,
     ballot: row.ballot,
     color: row.color,
@@ -187,53 +249,47 @@ export async function listParties(db: Db, groupId: string): Promise<Party[]> {
   }));
 }
 
-export async function addParty(
-  db: Db,
-  groupId: string,
-  input: { name: string; ballot: string; color: string; matchKeys: string[] },
-) {
+export async function addParty(db: Db, input: { name: string; ballot: string; color: string; matchKeys: string[] }) {
   const name = input.name.normalize("NFKC").replace(/\s+/g, " ").trim();
   if (name.length < 1 || name.length > 80) throw new GameError("שם הרשימה צריך להיות בין 1 ל-80 תווים.");
-  const parties = await listParties(db, groupId);
+  const parties = await listParties(db);
   const sort = parties.reduce((max, party) => Math.max(max, party.sortOrder), -1) + 1;
   await db.run(
-    `INSERT INTO parties (id, group_id, name, ballot, color, sort_order, match_keys, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [newId(), groupId, name, input.ballot.trim(), cleanColor(input.color), sort, JSON.stringify(input.matchKeys), new Date().toISOString()],
+    `INSERT INTO parties (id, name, ballot, color, sort_order, match_keys, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [newId(), name, input.ballot.trim(), cleanColor(input.color), sort, JSON.stringify(input.matchKeys), new Date().toISOString()],
   );
-  await recomputeCurrent(db, groupId);
+  await recomputeCurrent(db);
 }
 
 export async function updateParty(
   db: Db,
-  groupId: string,
   partyId: string,
   input: { name: string; ballot: string; color: string; matchKeys: string[] },
 ) {
   const name = input.name.normalize("NFKC").replace(/\s+/g, " ").trim();
   if (name.length < 1 || name.length > 80) throw new GameError("שם הרשימה צריך להיות בין 1 ל-80 תווים.");
   const result = await db.run(
-    `UPDATE parties SET name = ?, ballot = ?, color = ?, match_keys = ? WHERE id = ? AND group_id = ?`,
-    [name, input.ballot.trim(), cleanColor(input.color), JSON.stringify(input.matchKeys), partyId, groupId],
+    `UPDATE parties SET name = ?, ballot = ?, color = ?, match_keys = ? WHERE id = ?`,
+    [name, input.ballot.trim(), cleanColor(input.color), JSON.stringify(input.matchKeys), partyId],
   );
   if (result.changes === 0) throw new GameError("הרשימה לא נמצאה.");
-  await recomputeCurrent(db, groupId);
+  await recomputeCurrent(db);
 }
 
-export async function deleteParty(db: Db, groupId: string, partyId: string) {
+export async function deleteParty(db: Db, partyId: string) {
   const used = await db.get<{ c: number }>(`SELECT COUNT(*) AS c FROM predictions WHERE party_id = ?`, [partyId]);
   if (Number(used?.c ?? 0) > 0) {
     throw new GameError("אי אפשר למחוק רשימה שכבר ניחשו עליה. אפשר לשנות שם או אותיות.");
   }
   await db.transaction(async (tx) => {
     await tx.run(`DELETE FROM surplus_agreements WHERE party_a_id = ? OR party_b_id = ?`, [partyId, partyId]);
-    await tx.run(`DELETE FROM parties WHERE id = ? AND group_id = ?`, [partyId, groupId]);
+    await tx.run(`DELETE FROM parties WHERE id = ?`, [partyId]);
   });
-  await recomputeCurrent(db, groupId);
+  await recomputeCurrent(db);
 }
 
-export async function moveParty(db: Db, groupId: string, partyId: string, direction: -1 | 1) {
-  const parties = await listParties(db, groupId);
+export async function moveParty(db: Db, partyId: string, direction: -1 | 1) {
+  const parties = await listParties(db);
   const index = parties.findIndex((party) => party.id === partyId);
   const target = index + direction;
   if (index < 0 || target < 0 || target >= parties.length) return;
@@ -243,7 +299,7 @@ export async function moveParty(db: Db, groupId: string, partyId: string, direct
   });
 }
 
-export async function listAgreements(db: Db, groupId: string): Promise<Agreement[]> {
+export async function listAgreements(db: Db): Promise<Agreement[]> {
   const rows = await db.all<{
     id: string;
     party_a_id: string;
@@ -256,9 +312,7 @@ export async function listAgreements(db: Db, groupId: string): Promise<Agreement
      FROM surplus_agreements a
      JOIN parties pa ON pa.id = a.party_a_id
      JOIN parties pb ON pb.id = a.party_b_id
-     WHERE a.group_id = ?
      ORDER BY pa.sort_order`,
-    [groupId],
   );
   return rows.map((row) => ({
     id: row.id,
@@ -269,27 +323,27 @@ export async function listAgreements(db: Db, groupId: string): Promise<Agreement
   }));
 }
 
-export async function addAgreement(db: Db, groupId: string, partyAId: string, partyBId: string) {
+export async function addAgreement(db: Db, partyAId: string, partyBId: string) {
   if (partyAId === partyBId) throw new GameError("הסכם עודפים נחתם בין שתי רשימות שונות.");
-  const parties = await listParties(db, groupId);
+  const parties = await listParties(db);
   if (!parties.some((party) => party.id === partyAId) || !parties.some((party) => party.id === partyBId)) {
-    throw new GameError("אחת הרשימות לא בקבוצה.");
+    throw new GameError("אחת הרשימות לא נמצאה.");
   }
-  const existing = await listAgreements(db, groupId);
+  const existing = await listAgreements(db);
   const busy = new Set(existing.flatMap((item) => [item.partyAId, item.partyBId]));
   if (busy.has(partyAId) || busy.has(partyBId)) {
     throw new GameError("רשימה יכולה להיות רק בהסכם עודפים אחד.");
   }
   await db.run(
-    `INSERT INTO surplus_agreements (id, group_id, party_a_id, party_b_id, created_at) VALUES (?, ?, ?, ?, ?)`,
-    [newId(), groupId, partyAId, partyBId, new Date().toISOString()],
+    `INSERT INTO surplus_agreements (id, party_a_id, party_b_id, created_at) VALUES (?, ?, ?, ?)`,
+    [newId(), partyAId, partyBId, new Date().toISOString()],
   );
-  await recomputeCurrent(db, groupId);
+  await recomputeCurrent(db);
 }
 
-export async function removeAgreement(db: Db, groupId: string, agreementId: string) {
-  await db.run(`DELETE FROM surplus_agreements WHERE id = ? AND group_id = ?`, [agreementId, groupId]);
-  await recomputeCurrent(db, groupId);
+export async function removeAgreement(db: Db, agreementId: string) {
+  await db.run(`DELETE FROM surplus_agreements WHERE id = ?`, [agreementId]);
+  await recomputeCurrent(db);
 }
 
 const LOCKED_MESSAGE = "הניחושים נעולים. אי אפשר להצטרף או לשנות אחרי הנעילה.";
@@ -341,10 +395,10 @@ export async function savePrediction(
   if (!participant) throw new GameError("לא מצאנו ניחוש שמור בדפדפן הזה. הצטרפו עם כינוי.");
   const group = await mustGroup(db, groupId);
   assertBetsOpen(group, now);
-  const parties = await listParties(db, groupId);
+  const parties = await listParties(db);
   const known = new Set(parties.map((party) => party.id));
   for (const key of Object.keys(rawSeats)) {
-    if (!known.has(key)) throw new GameError("הטופס כולל רשימה שלא קיימת בקבוצה.");
+    if (!known.has(key)) throw new GameError("הטופס כולל רשימה שלא קיימת.");
   }
   const seats: Record<string, number> = {};
   for (const party of parties) {
@@ -364,6 +418,7 @@ export async function savePrediction(
       );
     }
   });
+  await touchBoard(db);
   return { warnings: check.warnings };
 }
 
@@ -376,6 +431,7 @@ export async function deleteParticipation(db: Db, groupId: string, token: string
     await tx.run(`DELETE FROM predictions WHERE participant_id = ?`, [participant.id]);
     await tx.run(`DELETE FROM participants WHERE id = ?`, [participant.id]);
   });
+  await touchBoard(db);
 }
 
 export async function listParticipantsAdmin(db: Db, groupId: string): Promise<AdminParticipant[]> {
@@ -396,7 +452,6 @@ export async function listParticipantsAdmin(db: Db, groupId: string): Promise<Ad
 
 export async function applyParsedResults(
   db: Db,
-  groupId: string,
   parsed: ParsedResults,
   meta: {
     source: "official" | "upload" | "manual";
@@ -405,16 +460,16 @@ export async function applyParsedResults(
     preferComputed?: boolean;
   },
 ) {
-  const group = await mustGroup(db, groupId);
-  const parties = await listParties(db, groupId);
-  const agreements = await listAgreements(db, groupId);
+  const site = await getSite(db);
+  const parties = await listParties(db);
+  const agreements = await listAgreements(db);
   const decision = decideSeats({
     parsed,
     parties: parties.map(toRef),
     agreements: agreements.map((item) => ({ a: item.partyAId, b: item.partyBId })),
-    preferComputed: meta.preferComputed ?? group.preferComputed,
+    preferComputed: meta.preferComputed ?? site.preferComputed,
   });
-  await replaceSnapshot(db, groupId, {
+  await replaceSnapshot(db, {
     fetchedAt: meta.fetchedAt ?? new Date().toISOString(),
     status: parsed.status,
     source: meta.source,
@@ -435,7 +490,6 @@ export async function applyParsedResults(
 
 export async function saveManualResults(
   db: Db,
-  groupId: string,
   input: {
     seatsByPartyId: Record<string, number>;
     votesByPartyId: Record<string, number | null>;
@@ -445,7 +499,7 @@ export async function saveManualResults(
     turnoutPercent: number | null;
   },
 ) {
-  const parties = await listParties(db, groupId);
+  const parties = await listParties(db);
   if (input.computeFromVotes) {
     for (const party of parties) {
       const votes = input.votesByPartyId[party.id];
@@ -463,7 +517,6 @@ export async function saveManualResults(
     const validVotes = lists.reduce((sum, list) => sum + (list.votes ?? 0), 0);
     await applyParsedResults(
       db,
-      groupId,
       {
         status: input.status,
         countedPercent: input.countedPercent,
@@ -487,7 +540,7 @@ export async function saveManualResults(
         throw new GameError(`קולות לא תקינים עבור ${party.name}.`);
       }
     }
-    await replaceSnapshot(db, groupId, {
+    await replaceSnapshot(db, {
       fetchedAt: new Date().toISOString(),
       status: input.status,
       source: "manual",
@@ -513,19 +566,19 @@ export async function saveManualResults(
       })),
     });
   }
-  await db.run(`UPDATE groups SET results_override = 1, last_fetch_error = NULL WHERE id = ?`, [groupId]);
+  await db.run(`UPDATE site SET results_override = 1, last_fetch_error = NULL WHERE id = 'site'`);
 }
 
-export async function markUploaded(db: Db, groupId: string) {
-  await db.run(`UPDATE groups SET results_override = 1, last_fetch_error = NULL WHERE id = ?`, [groupId]);
+export async function markUploaded(db: Db) {
+  await db.run(`UPDATE site SET results_override = 1, last_fetch_error = NULL WHERE id = 'site'`);
 }
 
-export async function clearOverride(db: Db, groupId: string) {
-  await db.run(`UPDATE groups SET results_override = 0 WHERE id = ?`, [groupId]);
+export async function clearOverride(db: Db) {
+  await db.run(`UPDATE site SET results_override = 0 WHERE id = 'site'`);
 }
 
-export async function recomputeCurrent(db: Db, groupId: string) {
-  const snapshot = await currentSnapshot(db, groupId);
+export async function recomputeCurrent(db: Db) {
+  const snapshot = await currentSnapshot(db);
   if (!snapshot || snapshot.seat_method === "manual") return;
   const stored = await snapshotRows(db, snapshot.id);
   const parsed: ParsedResults = {
@@ -545,66 +598,32 @@ export async function recomputeCurrent(db: Db, groupId: string) {
     })),
     format: "recompute",
   };
-  await applyParsedResults(db, groupId, parsed, {
+  await applyParsedResults(db, parsed, {
     source: snapshot.source,
     sourceUrl: snapshot.source_url,
     fetchedAt: snapshot.fetched_at,
   });
 }
 
-export async function getPublicState(db: Db, groupId: string, token: string | null): Promise<PublicGroupState> {
-  const group = await mustGroup(db, groupId);
-  const parties = await listParties(db, groupId);
-  const participants = await db.all<{ id: string; display_name: string }>(
-    `SELECT id, display_name FROM participants WHERE group_id = ? ORDER BY created_at`,
-    [groupId],
-  );
-  const you = await participantFromToken(db, groupId, token);
-  const predictionRows = await db.all<{ participant_id: string; party_id: string; seats: number }>(
-    `SELECT participant_id, party_id, seats FROM predictions
-     WHERE participant_id IN (SELECT id FROM participants WHERE group_id = ?)`,
-    [groupId],
-  );
-  const byParticipant = new Map<string, Record<string, number>>();
-  for (const row of predictionRows) {
-    const bag = byParticipant.get(row.participant_id) ?? {};
-    bag[row.party_id] = Number(row.seats);
-    byParticipant.set(row.participant_id, bag);
-  }
+export type ScoreContext = {
+  site: SiteSettings;
+  parties: Party[];
+  actual: Record<string, number>;
+  results: PublicResults | null;
+  scoreable: boolean;
+};
 
-  const snapshot = await currentSnapshot(db, groupId);
+export async function loadScoreContext(db: Db): Promise<ScoreContext> {
+  const site = await getSite(db);
+  const parties = await listParties(db);
+  const snapshot = await currentSnapshot(db);
   const resultRows = snapshot ? await snapshotRows(db, snapshot.id) : [];
   const actual: Record<string, number> = {};
   for (const party of parties) actual[party.id] = 0;
   for (const row of resultRows) {
     if (row.party_id) actual[row.party_id] = (actual[row.party_id] ?? 0) + Number(row.seats);
   }
-
-  const completeIds = new Set(
-    participants
-      .filter((participant) => {
-        const predicted = byParticipant.get(participant.id) ?? {};
-        return checkSeatVector(parties.map((party) => predicted[party.id] ?? 0)).ok;
-      })
-      .map((participant) => participant.id),
-  );
-
   const scoreable = Boolean(snapshot && Number(snapshot.scoreable) === 1);
-  const internal = scoreable
-    ? buildStandings(
-        parties.map((party) => party.id),
-        actual,
-        participants
-          .filter((participant) => completeIds.has(participant.id))
-          .map((participant) => ({
-            id: participant.id,
-            alias: participant.display_name,
-            predicted: byParticipant.get(participant.id) ?? {},
-          })),
-      )
-    : [];
-
-  const partyById = new Map(parties.map((party) => [party.id, party]));
   const results: PublicResults | null = snapshot
     ? {
         status: snapshot.status,
@@ -636,7 +655,53 @@ export async function getPublicState(db: Db, groupId: string, token: string | nu
           })),
       }
     : null;
+  return { site, parties, actual, results, scoreable };
+}
 
+export async function getPublicState(db: Db, groupId: string, token: string | null): Promise<PublicGroupState> {
+  const group = await mustGroup(db, groupId);
+  const { site, parties, actual, results, scoreable } = await loadScoreContext(db);
+  const participants = await db.all<{ id: string; display_name: string }>(
+    `SELECT id, display_name FROM participants WHERE group_id = ? ORDER BY created_at`,
+    [groupId],
+  );
+  const you = await participantFromToken(db, groupId, token);
+  const predictionRows = await db.all<{ participant_id: string; party_id: string; seats: number }>(
+    `SELECT participant_id, party_id, seats FROM predictions
+     WHERE participant_id IN (SELECT id FROM participants WHERE group_id = ?)`,
+    [groupId],
+  );
+  const byParticipant = new Map<string, Record<string, number>>();
+  for (const row of predictionRows) {
+    const bag = byParticipant.get(row.participant_id) ?? {};
+    bag[row.party_id] = Number(row.seats);
+    byParticipant.set(row.participant_id, bag);
+  }
+
+  const completeIds = new Set(
+    participants
+      .filter((participant) => {
+        const predicted = byParticipant.get(participant.id) ?? {};
+        return checkSeatVector(parties.map((party) => predicted[party.id] ?? 0)).ok;
+      })
+      .map((participant) => participant.id),
+  );
+
+  const internal = scoreable
+    ? buildStandings(
+        parties.map((party) => party.id),
+        actual,
+        participants
+          .filter((participant) => completeIds.has(participant.id))
+          .map((participant) => ({
+            id: participant.id,
+            alias: participant.display_name,
+            predicted: byParticipant.get(participant.id) ?? {},
+          })),
+      )
+    : [];
+
+  const partyById = new Map(parties.map((party) => [party.id, party]));
   const schedule = lockSchedule(group.electionStart, group.deadline);
   const locked = isLocked(schedule.lockAt);
   let own: OwnView | null = null;
@@ -686,12 +751,12 @@ export async function getPublicState(db: Db, groupId: string, token: string | nu
       lockAt: schedule.lockAt,
       lockReason: schedule.reason,
       locked,
-      knessetNumber: group.knessetNumber,
+      knessetNumber: site.knessetNumber,
     },
     participantCount: participants.length,
     completeCount: completeIds.size,
     aliases: participants.map((participant) => participant.display_name),
-    fetchProblem: group.fetchError,
+    fetchProblem: site.fetchError,
     results,
     standings: toPublicStandings(internal, you?.id),
     own,
@@ -700,7 +765,6 @@ export async function getPublicState(db: Db, groupId: string, token: string | nu
 
 async function replaceSnapshot(
   db: Db,
-  groupId: string,
   snapshot: {
     fetchedAt: string;
     status: "provisional" | "final";
@@ -728,21 +792,17 @@ async function replaceSnapshot(
   },
 ) {
   await db.transaction(async (tx) => {
-    await tx.run(
-      `DELETE FROM result_rows WHERE snapshot_id IN (SELECT id FROM result_snapshots WHERE group_id = ?)`,
-      [groupId],
-    );
-    await tx.run(`DELETE FROM result_snapshots WHERE group_id = ?`, [groupId]);
+    await tx.run(`DELETE FROM result_rows`);
+    await tx.run(`DELETE FROM result_snapshots`);
     const id = newId();
     await tx.run(
       `INSERT INTO result_snapshots (
-         id, group_id, fetched_at, status, source, seat_method, source_url,
+         id, fetched_at, status, source, seat_method, source_url,
          counted_percent, turnout_percent, eligible_voters, ballots_cast, valid_votes, invalid_votes,
          is_current, scoreable, note
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
       [
         id,
-        groupId,
         snapshot.fetchedAt,
         snapshot.status,
         snapshot.source,
@@ -777,15 +837,13 @@ async function replaceSnapshot(
         ],
       );
     }
+    await tx.run(`UPDATE site SET board_revision = board_revision + 1 WHERE id = 'site'`);
   });
 }
 
-async function currentSnapshot(db: Db, groupId: string) {
+async function currentSnapshot(db: Db) {
   return (
-    (await db.get<SnapshotRow>(
-      `SELECT * FROM result_snapshots WHERE group_id = ? ORDER BY fetched_at DESC LIMIT 1`,
-      [groupId],
-    )) ?? null
+    (await db.get<SnapshotRow>(`SELECT * FROM result_snapshots ORDER BY fetched_at DESC LIMIT 1`)) ?? null
   );
 }
 
@@ -799,19 +857,31 @@ async function mustGroup(db: Db, groupId: string) {
   return group;
 }
 
-function presentGroup(row: GroupRow) {
+async function touchBoard(db: Db) {
+  await db.run(`UPDATE site SET board_revision = board_revision + 1 WHERE id = 'site'`);
+}
+
+export type Group = {
+  id: string;
+  name: string;
+  code: string;
+  deadline: string | null;
+  electionStart: string;
+  publicBoard: boolean;
+  createdAt: string;
+  hasAdminLink: boolean;
+};
+
+function presentGroup(row: GroupRow): Group {
   return {
     id: row.id,
     name: row.name,
     code: row.code,
     deadline: row.deadline,
     electionStart: row.election_start || pollsOpenIso(),
-    knessetNumber: Number(row.knesset_number),
-    preferComputed: Number(row.prefer_computed_seats) === 1,
-    resultsOverride: Number(row.results_override) === 1,
+    publicBoard: Number(row.public_board) === 1,
     createdAt: row.created_at,
-    lastFetchAttemptAt: row.last_fetch_attempt_at,
-    fetchError: row.last_fetch_error,
+    hasAdminLink: Boolean(row.admin_token_hash),
   };
 }
 

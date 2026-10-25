@@ -11,7 +11,7 @@ import {
   savePrediction,
   updateGroup,
 } from "./game";
-import { ensureFreshResults } from "./refresh";
+import { ensureFreshSite } from "./refresh";
 import type { ParsedResults } from "./results/parse-cec";
 import { pollsOpenIso } from "./time";
 
@@ -25,7 +25,7 @@ describe("pool privacy and winner", () => {
   it("ranks the closest guess and never returns anyone else's seats", async () => {
     const db = await memory();
     const group = await createGroup(db, "חברים של שמעון", null, OPEN_UNTIL);
-    const parties = await listParties(db, group.id);
+    const parties = await listParties(db);
     const [a, b, c] = parties;
     const others = parties.slice(3);
 
@@ -52,7 +52,7 @@ describe("pool privacy and winner", () => {
     actual[b.id] = 40;
     actual[c.id] = 30;
     for (const party of others) actual[party.id] = 0;
-    await saveManualResults(db, group.id, {
+    await saveManualResults(db, {
       seatsByPartyId: actual,
       votesByPartyId: {},
       computeFromVotes: false,
@@ -106,7 +106,7 @@ describe("pool privacy and winner", () => {
     await expect(joinGroup(db, group.id, "מאוחר")).rejects.toThrow(/נעול/);
     const open = await createGroup(db, "פתוח", null, OPEN_UNTIL);
     const person = await joinGroup(db, open.id, "שחר");
-    const parties = await listParties(db, open.id);
+    const parties = await listParties(db);
     const seats: Record<string, number> = {};
     parties.forEach((party, index) => {
       seats[party.id] = index === 0 ? 120 : 0;
@@ -124,7 +124,7 @@ describe("pool privacy and winner", () => {
     const db = await memory();
     const start = pollsOpenIso("2026-10-27");
     const group = await createGroup(db, "קלפיות", null, start);
-    const parties = await listParties(db, group.id);
+    const parties = await listParties(db);
     const seats: Record<string, number> = {};
     parties.forEach((party, index) => {
       seats[party.id] = index === 0 ? 120 : 0;
@@ -153,7 +153,7 @@ describe("pool privacy and winner", () => {
   it("refreshes official results on a timer and skips a manual override", async () => {
     const db = await memory();
     const group = await createGroup(db, "ספירה");
-    const parties = await listParties(db, group.id);
+    const parties = await listParties(db);
     let calls = 0;
     const fetcher = async (): Promise<{ ok: true; parsed: ParsedResults; url: string }> => {
       calls += 1;
@@ -181,7 +181,7 @@ describe("pool privacy and winner", () => {
       };
     };
 
-    const first = await ensureFreshResults(db, group.id, { fetcher, now: new Date("2026-10-27T18:00:00.000Z") });
+    const first = await ensureFreshSite(db, { fetcher, now: new Date("2026-10-27T18:00:00.000Z") });
     expect(first.refreshed).toBe(true);
     expect(calls).toBe(1);
     const state = await getPublicState(db, group.id, null);
@@ -191,7 +191,7 @@ describe("pool privacy and winner", () => {
     expect(state.results?.scoreable).toBe(true);
     expect(state.results?.parties.find((party) => party.ballot === "מחל")?.seats).toBe(120);
 
-    const second = await ensureFreshResults(db, group.id, {
+    const second = await ensureFreshSite(db, {
       fetcher,
       now: new Date("2026-10-27T18:01:00.000Z"),
     });
@@ -202,7 +202,7 @@ describe("pool privacy and winner", () => {
     parties.forEach((party, index) => {
       manual[party.id] = index === 1 ? 120 : 0;
     });
-    await saveManualResults(db, group.id, {
+    await saveManualResults(db, {
       seatsByPartyId: manual,
       votesByPartyId: {},
       computeFromVotes: false,
@@ -210,7 +210,7 @@ describe("pool privacy and winner", () => {
       countedPercent: 100,
       turnoutPercent: null,
     });
-    const blocked = await ensureFreshResults(db, group.id, {
+    const blocked = await ensureFreshSite(db, {
       fetcher,
       force: true,
       now: new Date("2026-10-27T19:00:00.000Z"),

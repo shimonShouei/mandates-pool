@@ -7,8 +7,8 @@ import { ResultsBoard } from "@/components/results-board";
 import { Shell } from "@/components/shell";
 import { Badge } from "@/components/ui/badge";
 import { getDb } from "@/lib/db";
-import { getGroupByCode, getPublicState, listParties } from "@/lib/game";
-import { readToken } from "@/lib/session";
+import { getGroupByCode, getPublicState, isGroupAdmin, listParties } from "@/lib/game";
+import { readGroupAdminToken, readToken } from "@/lib/session";
 
 export default async function GroupPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
@@ -27,9 +27,10 @@ export default async function GroupPage({ params }: { params: Promise<{ code: st
   }
 
   const token = await readToken(group.id);
-  const [parties, state] = await Promise.all([
-    listParties(db, group.id),
+  const [parties, state, managing] = await Promise.all([
+    listParties(db),
     getPublicState(db, group.id, token),
+    isGroupAdmin(db, group.id, await readGroupAdminToken(group.id)),
   ]);
   const initial: Record<string, number> = {};
   for (const party of parties) {
@@ -41,7 +42,7 @@ export default async function GroupPage({ params }: { params: Promise<{ code: st
     <Shell>
       <header className="mt-6 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary">כנסת ה-{group.knessetNumber}</Badge>
+          <Badge variant="secondary">כנסת ה-{state.group.knessetNumber}</Badge>
           {state.group.locked ? <Badge>הניחושים נעולים</Badge> : <Badge variant="outline">פתוח עד הנעילה</Badge>}
         </div>
         <h1 className="font-heading text-5xl leading-none">{group.name}</h1>
@@ -52,6 +53,16 @@ export default async function GroupPage({ params }: { params: Promise<{ code: st
           serverNow={serverNow}
         />
         <CopyCode code={group.code} />
+        <p className="flex flex-wrap gap-3 text-sm">
+          <Link href="/board" className="text-primary underline-offset-4 hover:underline">
+            הדירוג הארצי
+          </Link>
+          {managing ? (
+            <Link href={`/g/${group.code}/manage`} className="text-primary underline-offset-4 hover:underline">
+              ניהול הקבוצה
+            </Link>
+          ) : null}
+        </p>
       </header>
 
       <div className="mt-6">

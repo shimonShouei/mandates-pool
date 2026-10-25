@@ -1,20 +1,25 @@
 export const SCHEMA_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS site (
+    id TEXT PRIMARY KEY,
+    knesset_number INTEGER NOT NULL DEFAULT 26,
+    prefer_computed_seats INTEGER NOT NULL DEFAULT 0,
+    results_override INTEGER NOT NULL DEFAULT 0,
+    last_fetch_attempt_at TEXT,
+    last_fetch_error TEXT,
+    board_revision INTEGER NOT NULL DEFAULT 0
+  )`,
   `CREATE TABLE IF NOT EXISTS groups (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     code TEXT NOT NULL UNIQUE,
     deadline TEXT,
     election_start TEXT,
-    knesset_number INTEGER NOT NULL DEFAULT 26,
-    prefer_computed_seats INTEGER NOT NULL DEFAULT 0,
-    results_override INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL,
-    last_fetch_attempt_at TEXT,
-    last_fetch_error TEXT
+    public_board INTEGER NOT NULL DEFAULT 1,
+    admin_token_hash TEXT,
+    created_at TEXT NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS parties (
     id TEXT PRIMARY KEY,
-    group_id TEXT NOT NULL,
     name TEXT NOT NULL,
     ballot TEXT NOT NULL DEFAULT '',
     color TEXT NOT NULL,
@@ -40,14 +45,12 @@ export const SCHEMA_STATEMENTS = [
   )`,
   `CREATE TABLE IF NOT EXISTS surplus_agreements (
     id TEXT PRIMARY KEY,
-    group_id TEXT NOT NULL,
     party_a_id TEXT NOT NULL,
     party_b_id TEXT NOT NULL,
     created_at TEXT NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS result_snapshots (
     id TEXT PRIMARY KEY,
-    group_id TEXT NOT NULL,
     fetched_at TEXT NOT NULL,
     status TEXT NOT NULL,
     source TEXT NOT NULL,
@@ -75,9 +78,18 @@ export const SCHEMA_STATEMENTS = [
     passed_threshold INTEGER NOT NULL,
     mapped INTEGER NOT NULL
   )`,
-  `CREATE INDEX IF NOT EXISTS idx_parties_group ON parties(group_id, sort_order)`,
+  `CREATE TABLE IF NOT EXISTS creation_log (
+    id TEXT PRIMARY KEY,
+    ip_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+];
+
+export const INDEX_STATEMENTS = [
+  `CREATE INDEX IF NOT EXISTS idx_parties_sort ON parties(sort_order, name)`,
   `CREATE INDEX IF NOT EXISTS idx_participants_group ON participants(group_id)`,
   `CREATE INDEX IF NOT EXISTS idx_predictions_participant ON predictions(participant_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_snapshots_group ON result_snapshots(group_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_groups_public ON groups(public_board, created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_rows_snapshot ON result_rows(snapshot_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_creation_log_ip ON creation_log(ip_hash, created_at)`,
 ];

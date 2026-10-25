@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { goToCode } from "@/app/actions";
+import { createPublicGroupAction, goToCode } from "@/app/actions";
+import { ActionForm } from "@/components/action-form";
+import { InstallHint } from "@/components/pwa-register";
 import { Shell } from "@/components/shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,13 +14,27 @@ export default function HomePage() {
         <p className="text-sm text-muted-foreground">הבחירות לכנסת ה-26 · 27 באוקטובר 2026</p>
         <h1 className="font-heading text-6xl leading-none">מנדטים</h1>
         <p className="text-lg leading-relaxed">
-          כל אחד מחלק 120 מושבים. אחרי הספירה, מי שהכי קרוב לתוצאה מנצח. אף אחד לא רואה איך האחרים חילקו.
+          פותחים קבוצה, כל אחד מחלק 120 מושבים, ואחרי הספירה רואים מי הכי קרוב. אף אחד לא רואה איך האחרים חילקו.
         </p>
       </header>
 
-      <form action={goToCode} className="mt-8 space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+      <ActionForm action={createPublicGroupAction} className="mt-8 space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+        <h2 className="font-heading text-2xl">קבוצה חדשה</h2>
         <div className="space-y-1.5">
-          <Label htmlFor="code">קוד שהגיע מהקבוצה</Label>
+          <Label htmlFor="group-name">שם הקבוצה</Label>
+          <Input id="group-name" name="name" required minLength={2} maxLength={40} placeholder="למשל חברים מהעבודה" className="h-11" />
+        </div>
+        <Button type="submit" className="h-11 w-full">
+          יצירת קבוצה
+        </Button>
+        <p className="text-sm text-muted-foreground">
+          מי שיוצר את הקבוצה מקבל קישור ניהול פרטי. אין צורך בסוד של האתר.
+        </p>
+      </ActionForm>
+
+      <form action={goToCode} className="mt-4 space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+        <div className="space-y-1.5">
+          <Label htmlFor="code">יש לכם כבר קוד?</Label>
           <Input
             id="code"
             name="code"
@@ -29,10 +45,16 @@ export default function HomePage() {
             className="h-11 text-center text-lg tracking-[0.2em]"
           />
         </div>
-        <Button type="submit" className="h-11 w-full">
-          כניסה
+        <Button type="submit" variant="outline" className="h-11 w-full">
+          כניסה לקבוצה
         </Button>
       </form>
+
+      <p className="mt-4 text-sm">
+        <Link href="/board" className="text-primary underline-offset-4 hover:underline">
+          הדירוג הארצי, מכל הקבוצות
+        </Link>
+      </p>
 
       <ol className="mt-8 space-y-4">
         <Step n="1" title="נכנסים עם כינוי">
@@ -42,14 +64,17 @@ export default function HomePage() {
           מספר שלם לכל רשימה. 1 עד 3 מנדטים לא עוברים את אחוז החסימה, אז שם רושמים אפס או לפחות 4.
         </Step>
         <Step n="3" title="המרחק קובע">
-          הניחושים ננעלים ב-07:00 ביום הבחירות, כשהקלפיות נפתחות. הדירוג מציג כינוי וציון בלבד.
+          הניחושים ננעלים ב-07:00 ביום הבחירות, כשהקלפיות נפתחות. בדירוג רואים כינוי, קבוצה וציון. לא את הניחוש עצמו.
         </Step>
       </ol>
 
+      <InstallHint />
+
       <p className="mt-10 text-sm text-muted-foreground">
         <Link href="/admin" className="underline-offset-4 hover:underline">
-          כניסת מנהל
+          ניהול האתר
         </Link>
+        <span> · תוצאות, רשימות והסכמי עודפים המשותפים לכל הקבוצות</span>
       </p>
     </Shell>
   );

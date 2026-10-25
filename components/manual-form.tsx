@@ -11,12 +11,10 @@ import { KNESSET_SEATS } from "@/lib/seats";
 type Party = { id: string; name: string; ballot: string };
 
 export function ManualForm({
-  code,
   parties,
   initialSeats,
   initialVotes,
 }: {
-  code: string;
   parties: Party[];
   initialSeats: Record<string, number>;
   initialVotes: Record<string, number | null>;
@@ -26,7 +24,6 @@ export function ManualForm({
 
   return (
     <ActionForm action={saveManualAction} className="space-y-3">
-      <input type="hidden" name="code" value={code} />
       <p className="text-sm text-muted-foreground">
         כשהמשיכה מוועדת הבחירות לא זמינה, מזינים כאן. סכום המנדטים חייב להיות 120, אלא אם מחשבים אותם מהקולות.
       </p>

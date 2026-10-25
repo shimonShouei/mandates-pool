@@ -12,9 +12,14 @@ export function Shell({
       <div className="h-1.5 bg-[#9c3b2e]" />
       <div className="h-1 bg-primary" />
       <div className={`mx-auto px-4 py-6 pb-28 ${wide ? "max-w-3xl" : "max-w-lg"}`}>
-        <Link href="/" className="text-sm font-medium tracking-wide text-primary">
-          מנדטים
-        </Link>
+        <div className="flex items-center justify-between gap-3">
+          <Link href="/" className="text-sm font-medium tracking-wide text-primary">
+            מנדטים
+          </Link>
+          <Link href="/board" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
+            הדירוג הארצי
+          </Link>
+        </div>
         {children}
       </div>
     </div>

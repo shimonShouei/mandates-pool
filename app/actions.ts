@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { safeEqual } from "@/lib/auth";
 import { getDb } from "@/lib/db";
@@ -10,26 +11,40 @@ import {
   addParty,
   applyParsedResults,
   clearOverride,
-  createGroup,
   deleteParticipation,
   deleteParty,
   getGroupByCode,
+  isGroupAdmin,
   joinGroup,
   listParties,
   markUploaded,
   moveParty,
   removeAgreement,
+  rotateGroupAdmin,
   saveManualResults,
   savePrediction,
-  updateGroup,
+  updateGroupAsAdmin,
   updateParty,
+  updateSite,
 } from "@/lib/game";
 import { parseCecPayload } from "@/lib/results/parse-cec";
-import { ensureFreshResults } from "@/lib/refresh";
-import { clearAdminCookie, clearToken, isAdmin, readToken, setAdminCookie, writeToken } from "@/lib/session";
-import { jerusalemLocalToIso, pollsOpenIso } from "@/lib/time";
+import { clientIp, createPublicGroup } from "@/lib/rate-limit";
+import { ensureFreshSite } from "@/lib/refresh";
+import {
+  clearAdminCookie,
+  clearToken,
+  isAdmin,
+  readGroupAdminToken,
+  readToken,
+  setAdminCookie,
+  writeGroupAdminToken,
+  writeToken,
+} from "@/lib/session";
+import { jerusalemLocalToIso } from "@/lib/time";
 
-export type ActionResult = { ok: true; warnings?: string[] } | { ok: false; error: string };
+export type ActionResult =
+  | { ok: true; warnings?: string[]; notice?: string }
+  | { ok: false; error: string };
 
 function fail(error: unknown): ActionResult {
   if (isRedirectError(error)) throw error;
@@ -48,19 +63,61 @@ function isRedirectError(error: unknown): boolean {
 }
 
 async function requireAdmin() {
-  if (!(await isAdmin())) throw new GameError("נדרשת כניסת מנהל.");
+  if (!(await isAdmin())) throw new GameError("נדרשת כניסת מנהל האתר.");
 }
 
-function paths(code: string) {
-  revalidatePath(`/g/${code}`);
-  revalidatePath(`/admin/${code}`);
+async function requireGroupAdmin(groupId: string) {
+  const db = await getDb();
+  const token = await readGroupAdminToken(groupId);
+  if (!(await isGroupAdmin(db, groupId, token))) {
+    throw new GameError("נדרש קישור הניהול של הקבוצה.");
+  }
+  return token;
+}
+
+function paths(code?: string) {
+  revalidatePath("/", "layout");
+  revalidatePath("/board");
   revalidatePath("/admin");
+  if (code) {
+    revalidatePath(`/g/${code}`);
+    revalidatePath(`/g/${code}/manage`);
+  }
 }
 
 export async function goToCode(formData: FormData) {
   const code = String(formData.get("code") || "").trim();
   if (!code) return;
   redirect(`/g/${encodeURIComponent(code)}`);
+}
+
+export async function createPublicGroupAction(formData: FormData): Promise<ActionResult> {
+  try {
+    const db = await getDb();
+    const group = await createPublicGroup(db, String(formData.get("name") || ""), clientIp(await headers()));
+    await writeGroupAdminToken(group.id, group.adminToken);
+    paths(group.code);
+    redirect(`/g/${group.code}/manage?welcome=1`);
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function claimGroupAdmin(formData: FormData): Promise<ActionResult> {
+  const code = String(formData.get("code") || "");
+  const token = String(formData.get("token") || "");
+  try {
+    const db = await getDb();
+    const group = await getGroupByCode(db, code);
+    if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
+    if (!(await isGroupAdmin(db, group.id, token))) {
+      return { ok: false, error: "קישור הניהול לא תואם." };
+    }
+    await writeGroupAdminToken(group.id, token);
+    redirect(`/g/${group.code}/manage`);
+  } catch (error) {
+    return fail(error);
+  }
 }
 
 export async function joinAction(formData: FormData): Promise<ActionResult> {
@@ -127,32 +184,13 @@ export async function logoutAdmin() {
   redirect("/admin");
 }
 
-export async function createGroupAction(formData: FormData): Promise<ActionResult> {
-  try {
-    await requireAdmin();
-    const db = await getDb();
-    const name = String(formData.get("name") || "ניחוש הכנסת ה-26");
-    const deadlineRaw = String(formData.get("deadline") || "");
-    const deadline = deadlineRaw ? jerusalemLocalToIso(deadlineRaw) : null;
-    if (deadlineRaw && !deadline) return { ok: false, error: "שעת הנעילה לא תקינה." };
-    const electionRaw = String(formData.get("electionStart") || "");
-    const electionStart = electionRaw ? jerusalemLocalToIso(electionRaw) : pollsOpenIso();
-    if (!electionStart) return { ok: false, error: "שעת פתיחת הקלפיות לא תקינה." };
-    const group = await createGroup(db, name, deadline, electionStart);
-    paths(group.code);
-    redirect(`/admin/${group.code}`);
-  } catch (error) {
-    return fail(error);
-  }
-}
-
 export async function updateGroupAction(formData: FormData): Promise<ActionResult> {
   const code = String(formData.get("code") || "");
   try {
-    await requireAdmin();
     const db = await getDb();
     const group = await getGroupByCode(db, code);
     if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
+    const token = await requireGroupAdmin(group.id);
     const deadlineRaw = String(formData.get("deadline") || "");
     const clearDeadline = formData.get("clearDeadline") === "1";
     const deadline = clearDeadline ? null : deadlineRaw ? jerusalemLocalToIso(deadlineRaw) : group.deadline;
@@ -160,13 +198,11 @@ export async function updateGroupAction(formData: FormData): Promise<ActionResul
     const electionRaw = String(formData.get("electionStart") || "");
     const electionStart = jerusalemLocalToIso(electionRaw);
     if (!electionStart) return { ok: false, error: "שעת פתיחת הקלפיות לא תקינה." };
-    const knesset = Number(formData.get("knesset") || group.knessetNumber);
-    await updateGroup(db, group.id, {
+    await updateGroupAsAdmin(db, group.id, token, {
       name: String(formData.get("name") || group.name),
       deadline,
       electionStart,
-      knessetNumber: knesset,
-      preferComputed: formData.get("preferComputed") === "1",
+      publicBoard: formData.get("publicBoard") === "1",
     });
     paths(group.code);
     return { ok: true };
@@ -178,11 +214,11 @@ export async function updateGroupAction(formData: FormData): Promise<ActionResul
 export async function lockNow(formData: FormData): Promise<ActionResult> {
   const code = String(formData.get("code") || "");
   try {
-    await requireAdmin();
     const db = await getDb();
     const group = await getGroupByCode(db, code);
     if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
-    await updateGroup(db, group.id, { deadline: new Date().toISOString() });
+    const token = await requireGroupAdmin(group.id);
+    await updateGroupAsAdmin(db, group.id, token, { deadline: new Date().toISOString() });
     paths(group.code);
     return { ok: true };
   } catch (error) {
@@ -190,13 +226,45 @@ export async function lockNow(formData: FormData): Promise<ActionResult> {
   }
 }
 
-export async function savePartyAction(formData: FormData): Promise<ActionResult> {
+export async function updateSiteAction(formData: FormData): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+    const db = await getDb();
+    const knesset = Number(formData.get("knesset") || 0);
+    await updateSite(db, {
+      knessetNumber: knesset,
+      preferComputed: formData.get("preferComputed") === "1",
+    });
+    paths();
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function rotateAdminLinkAction(formData: FormData): Promise<ActionResult> {
   const code = String(formData.get("code") || "");
   try {
     await requireAdmin();
     const db = await getDb();
     const group = await getGroupByCode(db, code);
     if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
+    const rotated = await rotateGroupAdmin(db, group.id);
+    paths(group.code);
+    const link = `/g/${rotated.code}/manage?k=${rotated.adminToken}`;
+    return {
+      ok: true,
+      notice: `קישור ניהול חדש, מוצג פעם אחת. מי שיפתח אותו מקבל את ניהול הקבוצה: ${link}`,
+    };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function savePartyAction(formData: FormData): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+    const db = await getDb();
     const input = {
       name: String(formData.get("name") || ""),
       ballot: String(formData.get("ballot") || ""),
@@ -207,9 +275,9 @@ export async function savePartyAction(formData: FormData): Promise<ActionResult>
         .filter(Boolean),
     };
     const partyId = String(formData.get("partyId") || "");
-    if (partyId) await updateParty(db, group.id, partyId, input);
-    else await addParty(db, group.id, input);
-    paths(group.code);
+    if (partyId) await updateParty(db, partyId, input);
+    else await addParty(db, input);
+    paths();
     return { ok: true };
   } catch (error) {
     return fail(error);
@@ -217,14 +285,11 @@ export async function savePartyAction(formData: FormData): Promise<ActionResult>
 }
 
 export async function deletePartyAction(formData: FormData): Promise<ActionResult> {
-  const code = String(formData.get("code") || "");
   try {
     await requireAdmin();
     const db = await getDb();
-    const group = await getGroupByCode(db, code);
-    if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
-    await deleteParty(db, group.id, String(formData.get("partyId") || ""));
-    paths(group.code);
+    await deleteParty(db, String(formData.get("partyId") || ""));
+    paths();
     return { ok: true };
   } catch (error) {
     return fail(error);
@@ -232,15 +297,12 @@ export async function deletePartyAction(formData: FormData): Promise<ActionResul
 }
 
 export async function movePartyAction(formData: FormData): Promise<ActionResult> {
-  const code = String(formData.get("code") || "");
   try {
     await requireAdmin();
     const db = await getDb();
-    const group = await getGroupByCode(db, code);
-    if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
     const direction = Number(formData.get("direction")) === -1 ? -1 : 1;
-    await moveParty(db, group.id, String(formData.get("partyId") || ""), direction);
-    paths(group.code);
+    await moveParty(db, String(formData.get("partyId") || ""), direction);
+    paths();
     return { ok: true };
   } catch (error) {
     return fail(error);
@@ -248,14 +310,11 @@ export async function movePartyAction(formData: FormData): Promise<ActionResult>
 }
 
 export async function addAgreementAction(formData: FormData): Promise<ActionResult> {
-  const code = String(formData.get("code") || "");
   try {
     await requireAdmin();
     const db = await getDb();
-    const group = await getGroupByCode(db, code);
-    if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
-    await addAgreement(db, group.id, String(formData.get("partyA") || ""), String(formData.get("partyB") || ""));
-    paths(group.code);
+    await addAgreement(db, String(formData.get("partyA") || ""), String(formData.get("partyB") || ""));
+    paths();
     return { ok: true };
   } catch (error) {
     return fail(error);
@@ -263,14 +322,11 @@ export async function addAgreementAction(formData: FormData): Promise<ActionResu
 }
 
 export async function removeAgreementAction(formData: FormData): Promise<ActionResult> {
-  const code = String(formData.get("code") || "");
   try {
     await requireAdmin();
     const db = await getDb();
-    const group = await getGroupByCode(db, code);
-    if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
-    await removeAgreement(db, group.id, String(formData.get("agreementId") || ""));
-    paths(group.code);
+    await removeAgreement(db, String(formData.get("agreementId") || ""));
+    paths();
     return { ok: true };
   } catch (error) {
     return fail(error);
@@ -278,18 +334,15 @@ export async function removeAgreementAction(formData: FormData): Promise<ActionR
 }
 
 export async function assignUnmappedAction(formData: FormData): Promise<ActionResult> {
-  const code = String(formData.get("code") || "");
   try {
     await requireAdmin();
     const db = await getDb();
-    const group = await getGroupByCode(db, code);
-    if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
     const ballot = String(formData.get("ballot") || "").trim();
     const sourceName = String(formData.get("sourceName") || "").trim();
     const partyId = String(formData.get("partyId") || "");
-    const parties = await listParties(db, group.id);
+    const parties = await listParties(db);
     if (partyId === "__new") {
-      await addParty(db, group.id, {
+      await addParty(db, {
         name: sourceName || ballot || "רשימה",
         ballot,
         color: "#57534e",
@@ -299,14 +352,14 @@ export async function assignUnmappedAction(formData: FormData): Promise<ActionRe
       const party = parties.find((item) => item.id === partyId);
       if (!party) return { ok: false, error: "הרשימה לא נמצאה." };
       const matchKeys = [...new Set([...party.matchKeys, ballot, sourceName].filter(Boolean))];
-      await updateParty(db, group.id, party.id, {
+      await updateParty(db, party.id, {
         name: party.name,
         ballot: party.ballot || ballot,
         color: party.color,
         matchKeys,
       });
     }
-    paths(group.code);
+    paths();
     return { ok: true };
   } catch (error) {
     return fail(error);
@@ -314,7 +367,6 @@ export async function assignUnmappedAction(formData: FormData): Promise<ActionRe
 }
 
 export async function uploadResultsAction(formData: FormData): Promise<ActionResult> {
-  const code = String(formData.get("code") || "");
   try {
     await requireAdmin();
     const file = formData.get("file");
@@ -323,11 +375,9 @@ export async function uploadResultsAction(formData: FormData): Promise<ActionRes
     const parsed = parseCecPayload(await file.text());
     if (!parsed) return { ok: false, error: "לא זיהינו בקובץ טבלת רשימות של ועדת הבחירות." };
     const db = await getDb();
-    const group = await getGroupByCode(db, code);
-    if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
-    await applyParsedResults(db, group.id, parsed, { source: "upload", sourceUrl: file.name });
-    await markUploaded(db, group.id);
-    paths(group.code);
+    await applyParsedResults(db, parsed, { source: "upload", sourceUrl: file.name });
+    await markUploaded(db);
+    paths();
     return { ok: true };
   } catch (error) {
     return fail(error);
@@ -335,13 +385,10 @@ export async function uploadResultsAction(formData: FormData): Promise<ActionRes
 }
 
 export async function saveManualAction(formData: FormData): Promise<ActionResult> {
-  const code = String(formData.get("code") || "");
   try {
     await requireAdmin();
     const db = await getDb();
-    const group = await getGroupByCode(db, code);
-    if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
-    const parties = await listParties(db, group.id);
+    const parties = await listParties(db);
     const seatsByPartyId: Record<string, number> = {};
     const votesByPartyId: Record<string, number | null> = {};
     for (const party of parties) {
@@ -351,7 +398,7 @@ export async function saveManualAction(formData: FormData): Promise<ActionResult
     }
     const countedRaw = String(formData.get("countedPercent") || "").trim();
     const turnoutRaw = String(formData.get("turnoutPercent") || "").trim();
-    await saveManualResults(db, group.id, {
+    await saveManualResults(db, {
       seatsByPartyId,
       votesByPartyId,
       computeFromVotes: formData.get("computeFromVotes") === "1",
@@ -359,22 +406,19 @@ export async function saveManualAction(formData: FormData): Promise<ActionResult
       countedPercent: countedRaw === "" ? null : Number(countedRaw),
       turnoutPercent: turnoutRaw === "" ? null : Number(turnoutRaw),
     });
-    paths(group.code);
+    paths();
     return { ok: true };
   } catch (error) {
     return fail(error);
   }
 }
 
-export async function refreshOfficialAction(formData: FormData): Promise<ActionResult> {
-  const code = String(formData.get("code") || "");
+export async function refreshOfficialAction(): Promise<ActionResult> {
   try {
     await requireAdmin();
     const db = await getDb();
-    const group = await getGroupByCode(db, code);
-    if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
-    const result = await ensureFreshResults(db, group.id, { force: true, overrideManual: true });
-    paths(group.code);
+    const result = await ensureFreshSite(db, { force: true, overrideManual: true });
+    paths();
     if (!result.refreshed) return { ok: false, error: result.error ?? "לא הצלחנו לרענן." };
     return { ok: true };
   } catch (error) {
@@ -382,16 +426,13 @@ export async function refreshOfficialAction(formData: FormData): Promise<ActionR
   }
 }
 
-export async function resumeAutoAction(formData: FormData): Promise<ActionResult> {
-  const code = String(formData.get("code") || "");
+export async function resumeAutoAction(): Promise<ActionResult> {
   try {
     await requireAdmin();
     const db = await getDb();
-    const group = await getGroupByCode(db, code);
-    if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
-    await clearOverride(db, group.id);
-    const result = await ensureFreshResults(db, group.id, { force: true });
-    paths(group.code);
+    await clearOverride(db);
+    const result = await ensureFreshSite(db, { force: true });
+    paths();
     if (!result.refreshed) return { ok: false, error: result.error ?? "העקיפה בוטלה, אבל הרענון מהוועדה נכשל." };
     return { ok: true };
   } catch (error) {
