@@ -103,6 +103,7 @@ export function BetForm({
       <ul className="space-y-2">
         {parties.map((party) => {
           const value = seats[party.id] ?? 0;
+          const shown = Math.min(KNESSET_SEATS, Math.max(0, value));
           const warning = seatWarningForParty(party.name, value);
           return (
             <li key={party.id} className="rounded-3xl bg-card px-3 py-3 ring-1 ring-border transition hover:ring-primary/40">
@@ -160,12 +161,16 @@ export function BetForm({
                 min={0}
                 max={KNESSET_SEATS}
                 step={1}
-                value={Math.min(KNESSET_SEATS, value)}
-                disabled={closed}
-                aria-label={`מחוון מושבים ל${party.name}`}
-                className="mt-2 h-8 w-full cursor-pointer accent-current disabled:cursor-not-allowed disabled:opacity-40"
+                value={shown}
+                tabIndex={-1}
+                aria-hidden
+                inert
+                className="pointer-events-none mt-2 h-8 w-full accent-current"
                 style={{ accentColor: party.color }}
-                onChange={(event) => update(party.id, Number(event.target.value))}
+                onChange={() => undefined}
+                onInput={(event) => {
+                  event.currentTarget.value = String(shown);
+                }}
               />
               {warning ? <p className="mt-1 text-xs text-warning">{warning}</p> : null}
             </li>
