@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { googleSignIn, sendMagicLink } from "@/app/signin/actions";
+import { googleSignIn, sendMagicLink } from "@/app/(play)/signin/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

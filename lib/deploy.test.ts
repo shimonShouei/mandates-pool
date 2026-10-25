@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import robots from "../app/robots";
 import { authModes } from "./auth-modes";
 import { deploymentHost } from "./public-origin";
 import { SEED_PARTIES } from "./parties";
@@ -48,6 +49,32 @@ describe("Vercel deploy settings", () => {
       }),
     ).toBeNull();
     expect(deploymentHost({ NODE_ENV: "production" })).toBeNull();
+  });
+
+  it("lets Google crawl the public privacy and terms pages", () => {
+    const rules = robots().rules;
+    const rule = Array.isArray(rules) ? rules[0] : rules;
+    const allow = [rule?.allow].flat();
+    const disallow = [rule?.disallow].flat().filter((path) => path != null);
+    expect(allow).toEqual(expect.arrayContaining(["/", "/privacy", "/terms"]));
+    expect(disallow).not.toContain("/privacy");
+    expect(disallow).not.toContain("/terms");
+    expect(disallow).toEqual(expect.arrayContaining(["/admin", "/api/", "/me"]));
+    for (const file of ["app/privacy/page.tsx", "app/terms/page.tsx"]) {
+      const source = readFileSync(file, "utf8");
+      expect(source).toContain('export const dynamic = "force-static"');
+      expect(source).not.toContain("currentUser");
+      expect(source).not.toContain("redirect(");
+    }
+    const signin = readFileSync("app/(play)/signin/page.tsx", "utf8");
+    expect(signin).toContain('href="/privacy"');
+    expect(signin).toContain('href="/terms"');
+    const frame = readFileSync("components/site-frame.tsx", "utf8");
+    expect(frame).toContain('"/privacy"');
+    expect(frame).toContain('"/terms"');
+    expect(frame).toContain("<footer");
+    expect(readFileSync("app/(play)/layout.tsx", "utf8")).toContain('dynamic = "force-dynamic"');
+    expect(readFileSync("app/layout.tsx", "utf8")).not.toContain("force-dynamic");
   });
 
   it("ships a parties seed for an empty database", () => {

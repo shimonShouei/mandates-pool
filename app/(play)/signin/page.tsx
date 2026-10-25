@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { authModes } from "@/auth";
 import { SignInForm } from "@/components/sign-in-form";
 import { Shell } from "@/components/shell";
@@ -48,6 +49,17 @@ export default async function SignInPage({
           </ul>
         </section>
       ) : null}
+      <p className="mt-8 text-sm leading-relaxed text-muted-foreground">
+        בכניסה חלים{" "}
+        <Link href="/terms" className="text-primary underline-offset-4 hover:underline">
+          תנאי השימוש
+        </Link>
+        {" ול"}
+        <Link href="/privacy" className="text-primary underline-offset-4 hover:underline">
+          מדיניות הפרטיות
+        </Link>
+        .
+      </p>
     </Shell>
   );
 }

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/auth";
-import { signOutAction } from "@/app/signin/actions";
+import { signOutAction } from "@/app/(play)/signin/actions";
 import { Shell } from "@/components/shell";
 import { Button } from "@/components/ui/button";
 import { listMyGroups } from "@/lib/accounts";

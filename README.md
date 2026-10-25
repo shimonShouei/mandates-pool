@@ -15,7 +15,7 @@
 
 הציון הראשי הוא **סכום הסטיות המוחלטות**: לכל רשימה לוקחים את ההפרש בלי מינוס ומחברים. מושב שעבר מרשימה לרשימה נספר פעמיים, ולכן בדירוג מוצג גם החצי, **מושבים לא במקום**. נמוך יותר עדיף. אם לשני אנשים אותו ציון, שוברים תיקו לפי מרחק אוקלידי. הוא לא מחליף את הציון הראשי.
 
-על כל רשימה שניחשו נכון אם היא עוברת את אחוז החסימה מורידים משקל קטן. בניחוש, 4 ומעלה אומר «עוברת» ו-0 עד 3 אומר «לא». בתוצאה, כל מספר מושבים גדול מאפס אומר שהרשימה עברה. ברירת המחדל היא 0.25, ומנהל האתר יכול לשנות את המשקל או לשים 0 כדי לכבות את הבונוס. אותו ציון בקבוצה ובדירוג הארצי. הסבר בעברית פשוטה נמצא ב-`/scoring`. הפונקציות חיות ב-`lib/scoring.ts`.
+על כל רשימה שניחשו נכון אם היא עוברת את אחוז החסימה מורידים משקל קטן. בניחוש, 4 ומעלה אומר «עוברת» ו-0 עד 3 אומר «לא». בתוצאה, כל מספר מושבים גדול מאפס אומר שהרשימה עברה. ברירת המחדל היא 0.25, ומנהל האתר יכול לשנות את המשקל או לשים 0 כדי לכבות את הבונוס. אותו ציון בקבוצה ובדירוג הארצי. הסבר בעברית פשוטה נמצא ב-`/scoring`. מדיניות הפרטיות ב-`/privacy` ותנאי השימוש ב-`/terms`. שניהם ציבוריים, בלי כניסה. הפונקציות חיות ב-`lib/scoring.ts`.
 
 חוכמת ההמונים ב-`/crowd` ובתוך כל קבוצה מראה רק סיכום: ממוצע, חציון, טווח בין הרבעונים, התפלגות קצרה, ואחוז הניחושים שרשימה עוברת את אחוז החסימה. גושים שמנהל האתר מגדיר מקבלים גם את אחוז הניחושים שמגיעים ל-61 מנדטים. הסיכום מופיע רק אחרי מספר ניחושים שלמים (ברירת מחדל 5, ולפחות 2). אפשר להסתיר אותו עד הנעילה. אחרי התוצאות רואים את התוצאה בפועל מול התחזית. הדירוג הארצי כולל רק קבוצות שלא יצאו ממנו.
 
@@ -179,7 +179,7 @@ Install from Chrome or Edge with “Install app” / “Add to home screen”. O
 2. Push this repo.
 3. Import it on [Vercel](https://vercel.com) as a Next.js app. The Hobby plan is enough.
 4. Set `ADMIN_SECRET`, `CRON_SECRET`, `AUTH_SECRET`, and the Neon URLs. Leave `AUTH_URL` empty: `trustHost` uses the request host, and `VERCEL_URL` covers a request that only has the deployment host. Google and Resend are optional. Without their keys those buttons stay hidden and the site still boots. SQLite will not persist on Vercel; the app refuses to boot there without a Postgres URL.
-5. Deploy. The build runs the schema migration when a Postgres URL is present, on the direct URL, and seeds the parties list when that table is empty. The first request migrates again if the build skipped it. Share `https://<project>.vercel.app`. People create their own groups there. `/board` is the national leaderboard. `/scoring` explains the score in Hebrew. `/admin` is only for the `ADMIN_SECRET` holder. Web Analytics and Speed Insights load from the deployment with no extra environment variables. Hobby does not support custom events, so the app does not send any.
+5. Deploy. The build runs the schema migration when a Postgres URL is present, on the direct URL, and seeds the parties list when that table is empty. The first request migrates again if the build skipped it. Share `https://<project>.vercel.app`. People create their own groups there. `/board` is the national leaderboard. `/scoring` explains the score in Hebrew. `/privacy` and `/terms` are public static pages for the Google OAuth consent screen. `/admin` is only for the `ADMIN_SECRET` holder. Web Analytics and Speed Insights load from the deployment with no extra environment variables. Hobby does not support custom events, so the app does not send any.
 
 ## Free tier on election night
 

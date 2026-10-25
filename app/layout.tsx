@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Rubik } from "next/font/google";
-import { ClaimDevice } from "@/components/claim-device";
 import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
 
@@ -44,9 +43,6 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="he" dir="rtl" className={rubik.variable} suppressHydrationWarning>
@@ -55,7 +51,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body className="min-h-dvh bg-background font-sans text-foreground antialiased">
         <PwaRegister />
-        <ClaimDevice />
         {children}
         <Analytics />
         <SpeedInsights />

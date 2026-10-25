@@ -39,6 +39,10 @@ test("public pages, a missing page, robots, and the share image", async ({ page 
 
   await page.goto("/signin");
   await expect(page.getByText("הכניסה עוד לא הוגדרה")).toBeVisible();
+  await page.getByRole("link", { name: "מדיניות הפרטיות" }).click();
+  await expect(page.getByRole("heading", { name: "מדיניות פרטיות" })).toBeVisible();
+  await page.goto("/terms");
+  await expect(page.getByRole("heading", { name: "תנאי שימוש" })).toBeVisible();
 
   const missing = await page.goto("/no-such-page");
   expect(missing?.status()).toBe(404);
@@ -59,6 +63,8 @@ test("robots and the open graph image are served", async ({ request }) => {
   expect(body).toContain("Disallow: /admin");
   expect(body).toContain("Disallow: /api/");
   expect(body).toContain("Disallow: /me");
+  expect(body).toContain("Allow: /privacy");
+  expect(body).toContain("Allow: /terms");
 
   const image = await request.get("/opengraph-image");
   expect(image.status()).toBe(200);
