@@ -42,9 +42,11 @@ export type OwnPrediction = {
 
 export type OwnBreakdown = {
   rank: number;
-  absoluteRank: number;
   euclidean: number;
   absolute: number;
+  misplaced: number;
+  score: number;
+  thresholdCorrect: number;
   parties: {
     partyId: string;
     name: string;
@@ -52,6 +54,7 @@ export type OwnBreakdown = {
     predicted: number;
     actual: number;
     diff: number;
+    passedCall: boolean;
   }[];
 };
 
@@ -62,6 +65,19 @@ export type OwnView = {
   total: number;
   prediction: OwnPrediction[];
   breakdown: OwnBreakdown | null;
+};
+
+/** Public group board. No seat vector and no "you" flag. */
+export type PublicStandingsPayload = {
+  participantCount: number;
+  completeCount: number;
+  aliases: string[];
+  fetchProblem: string | null;
+  results: PublicResults | null;
+  standings: PublicStanding[];
+  thresholdBonus: number;
+  partyCount: number;
+  scoreable: boolean;
 };
 
 export type PublicGroupState = {
@@ -82,6 +98,8 @@ export type PublicGroupState = {
   results: PublicResults | null;
   standings: PublicStanding[];
   own: OwnView | null;
+  thresholdBonus: number;
+  partyCount: number;
 };
 
 export type AdminParticipant = {
@@ -90,27 +108,27 @@ export type AdminParticipant = {
   complete: boolean;
 };
 
-export type BoardMetric = "euclidean" | "absolute";
-
 /** A public national-board row. No seat vector. */
 export type GlobalStanding = {
   rank: number;
-  absoluteRank: number;
   alias: string;
   groupName: string;
   groupCode: string;
   euclidean: number;
   absolute: number;
+  misplaced: number;
+  score: number;
+  thresholdCorrect: number;
   groupRank: number;
-  groupAbsoluteRank: number;
 };
 
 export type GlobalBoard = {
-  metric: BoardMetric;
   page: number;
   pageSize: number;
   total: number;
   pageCount: number;
   scoreable: boolean;
+  thresholdBonus: number;
+  partyCount: number;
   rows: GlobalStanding[];
 };

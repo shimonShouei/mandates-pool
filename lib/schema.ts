@@ -6,7 +6,8 @@ export const SCHEMA_STATEMENTS = [
     results_override INTEGER NOT NULL DEFAULT 0,
     last_fetch_attempt_at TEXT,
     last_fetch_error TEXT,
-    board_revision INTEGER NOT NULL DEFAULT 0
+    board_revision INTEGER NOT NULL DEFAULT 0,
+    threshold_bonus REAL NOT NULL DEFAULT 0.25
   )`,
   `CREATE TABLE IF NOT EXISTS groups (
     id TEXT PRIMARY KEY,
@@ -82,6 +83,13 @@ export const SCHEMA_STATEMENTS = [
     id TEXT PRIMARY KEY,
     ip_hash TEXT NOT NULL,
     created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS board_cache (
+    id TEXT PRIMARY KEY,
+    cache_key TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    computed_at TEXT NOT NULL,
+    lock_until TEXT
   )`,
 ];
 

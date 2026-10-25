@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { formatNumber, formatPercent, formatScore, formatSigned, formatWhen } from "@/lib/format";
-import type { PublicGroupState, PublicStanding } from "@/lib/public-state";
+import type { OwnView, PublicGroupState, PublicStanding, PublicStandingsPayload } from "@/lib/public-state";
 
 const METHOD: Record<string, string> = {
   "bader-ofer": "חלוקה: באדר-עופר לפי הקולות",
@@ -14,20 +15,37 @@ const METHOD: Record<string, string> = {
 
 export function ResultsBoard({ code, initial }: { code: string; initial: PublicGroupState }) {
   const [state, setState] = useState(initial);
-  const [metric, setMetric] = useState<"euclidean" | "absolute">("euclidean");
+  const fetchedAt = useRef(initial.results?.fetchedAt ?? null);
 
   useEffect(() => {
     setState(initial);
+    fetchedAt.current = initial.results?.fetchedAt ?? null;
   }, [initial]);
 
   useEffect(() => {
     let cancelled = false;
+    const loadOwn = async () => {
+      try {
+        const response = await fetch(`/api/groups/${code}/me`, { cache: "no-store" });
+        if (!response.ok || cancelled) return;
+        const payload = (await response.json()) as { own: OwnView | null };
+        if (cancelled) return;
+        setState((current) => applyOwn(current, payload.own));
+      } catch {
+        /* keep the last private view */
+      }
+    };
     const load = async () => {
       try {
-        const response = await fetch(`/api/groups/${code}/leaderboard`, { cache: "no-store" });
+        const response = await fetch(`/api/groups/${code}/standings`);
         if (!response.ok || cancelled) return;
-        const next = (await response.json()) as PublicGroupState;
-        if (!cancelled) setState(next);
+        const next = (await response.json()) as PublicStandingsPayload;
+        if (cancelled) return;
+        const previousAt = fetchedAt.current;
+        const nextAt = next.results?.fetchedAt ?? null;
+        fetchedAt.current = nextAt;
+        setState((current) => mergePublic(current, next));
+        if (nextAt !== previousAt) await loadOwn();
       } catch {
         /* keep the last board */
       }
@@ -42,10 +60,9 @@ export function ResultsBoard({ code, initial }: { code: string; initial: PublicG
   }, [code]);
 
   const results = state.results;
-  const standings = [...state.standings].sort((a, b) =>
-    metric === "euclidean" ? a.rank - b.rank || a.absolute - b.absolute : a.absoluteRank - b.absoluteRank || a.rank - b.rank,
-  );
-  const winners = state.standings.filter((row) => row.rank === 1);
+  const standings = [...state.standings].sort((a, b) => a.rank - b.rank || a.alias.localeCompare(b.alias, "he"));
+  const winners = standings.filter((row) => row.rank === 1);
+  const bonusOn = state.thresholdBonus > 0;
 
   return (
     <section className="mt-8 space-y-4">
@@ -78,9 +95,7 @@ export function ResultsBoard({ code, initial }: { code: string; initial: PublicG
             עודכן {formatWhen(results.fetchedAt)}.
           </p>
           <p className="text-sm text-muted-foreground">{METHOD[results.seatMethod]}</p>
-          {results.note ? (
-            <p className="whitespace-pre-wrap text-sm text-amber-950">{results.note}</p>
-          ) : null}
+          {results.note ? <p className="whitespace-pre-wrap text-sm text-amber-950">{results.note}</p> : null}
           {results.unmapped.some((row) => row.seats > 0) ? (
             <ul className="text-sm text-amber-950">
               {results.unmapped
@@ -126,24 +141,19 @@ export function ResultsBoard({ code, initial }: { code: string; initial: PublicG
           <p className="font-heading text-2xl">
             {winners.length === 1
               ? winners[0].isYou
-                ? "אתם הכי קרובים"
-                : `הכי קרוב: ${winners[0].alias}`
+                ? "הכי מעט מושבים לא במקום: אתם"
+                : `הכי מעט מושבים לא במקום: ${winners[0].alias}`
               : `תיקו בצמרת: ${winners.map((row) => row.alias).join(", ")}`}
           </p>
-          <div className="flex gap-2">
-            <MetricButton active={metric === "euclidean"} onClick={() => setMetric("euclidean")}>
-              מרחק
-            </MetricButton>
-            <MetricButton active={metric === "absolute"} onClick={() => setMetric("absolute")}>
-              סכום סטיות
-            </MetricButton>
-          </div>
           <p className="text-xs text-muted-foreground">
-            המרחק הוא שורש סכום ריבועי ההפרשים. סכום הסטיות הוא סך הערכים המוחלטים. נמוך יותר עדיף. המנצח נקבע לפי המרחק.
+            המספר הגדול הוא מושבים לא במקום, חצי מסכום הסטיות. נמוך יותר עדיף.{" "}
+            <Link href="/scoring" className="text-primary underline-offset-4 hover:underline">
+              איך מחשבים את הציון
+            </Link>
           </p>
           <ol className="space-y-2">
             {standings.map((row) => (
-              <StandingRow key={row.alias} row={row} metric={metric} />
+              <StandingRow key={row.alias} row={row} bonusOn={bonusOn} partyCount={state.partyCount} />
             ))}
           </ol>
         </div>
@@ -155,14 +165,22 @@ export function ResultsBoard({ code, initial }: { code: string; initial: PublicG
             <p className="text-xs font-medium text-primary">רק אתם רואים את זה</p>
             <h3 className="font-heading text-2xl">הפער של {state.own.alias}</h3>
             <p className="text-sm text-muted-foreground">
-              מקום {formatNumber(metric === "euclidean" ? state.own.breakdown.rank : state.own.breakdown.absoluteRank)} · מרחק{" "}
-              {formatScore(state.own.breakdown.euclidean)} · סכום סטיות {formatNumber(state.own.breakdown.absolute)}
+              מקום {formatNumber(state.own.breakdown.rank)} · מושבים לא במקום {formatScore(state.own.breakdown.misplaced)} ·
+              סטיות {formatNumber(state.own.breakdown.absolute)}
+              {bonusOn
+                ? ` · חסימה נכונה ${formatNumber(state.own.breakdown.thresholdCorrect)} מתוך ${formatNumber(state.partyCount)}`
+                : ""}
             </p>
           </div>
           <ul className="divide-y divide-primary/15">
             {state.own.breakdown.parties.map((party) => (
               <li key={party.partyId} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 py-1.5 text-sm">
-                <span className="truncate">{party.name}</span>
+                <span className="truncate">
+                  {party.name}
+                  {bonusOn ? (
+                    <span className="text-muted-foreground">{party.passedCall ? " · חסימה נכונה" : " · חסימה לא"}</span>
+                  ) : null}
+                </span>
                 <span className="tabular-nums text-muted-foreground">{formatNumber(party.predicted)}</span>
                 <span className="tabular-nums">{formatNumber(party.actual)}</span>
                 <span className={`tabular-nums ${party.diff === 0 ? "text-muted-foreground" : "font-medium"}`}>
@@ -182,8 +200,38 @@ export function ResultsBoard({ code, initial }: { code: string; initial: PublicG
   );
 }
 
-function StandingRow({ row, metric }: { row: PublicStanding; metric: "euclidean" | "absolute" }) {
-  const rank = metric === "euclidean" ? row.rank : row.absoluteRank;
+function mergePublic(current: PublicGroupState, next: PublicStandingsPayload): PublicGroupState {
+  const alias = current.own?.alias;
+  const standings = next.standings.map((row) => ({ ...row, isYou: alias != null && row.alias === alias }));
+  const mine = alias ? standings.find((row) => row.alias === alias) : undefined;
+  const own =
+    current.own && current.own.breakdown && mine
+      ? { ...current.own, breakdown: { ...current.own.breakdown, rank: mine.rank } }
+      : current.own;
+  return {
+    ...current,
+    participantCount: next.participantCount,
+    completeCount: next.completeCount,
+    aliases: next.aliases,
+    fetchProblem: next.fetchProblem,
+    results: next.results,
+    standings,
+    thresholdBonus: next.thresholdBonus,
+    partyCount: next.partyCount,
+    own,
+  };
+}
+
+function applyOwn(current: PublicGroupState, own: OwnView | null): PublicGroupState {
+  const alias = own?.alias;
+  return {
+    ...current,
+    own,
+    standings: current.standings.map((row) => ({ ...row, isYou: alias != null && row.alias === alias })),
+  };
+}
+
+function StandingRow({ row, bonusOn, partyCount }: { row: PublicStanding; bonusOn: boolean; partyCount: number }) {
   return (
     <li
       className={`flex items-center justify-between gap-3 rounded-xl px-3 py-3 ring-1 ring-foreground/10 ${
@@ -191,37 +239,23 @@ function StandingRow({ row, metric }: { row: PublicStanding; metric: "euclidean"
       }`}
     >
       <div className="flex min-w-0 items-center gap-3">
-        <span className="font-heading w-8 text-2xl tabular-nums">{formatNumber(rank)}</span>
+        <span className="font-heading w-8 text-2xl tabular-nums">{formatNumber(row.rank)}</span>
         <span className="truncate font-medium">
           {row.alias}
           {row.isYou ? <span className="text-primary"> · אתם</span> : null}
         </span>
       </div>
       <div className="text-end text-sm tabular-nums">
-        <div className="font-medium">{formatScore(row.euclidean)}</div>
+        <div className="font-medium">{formatScore(row.misplaced)}</div>
+        <div className="text-xs text-muted-foreground">מושבים לא במקום</div>
         <div className="text-xs text-muted-foreground">סטיות {formatNumber(row.absolute)}</div>
+        {bonusOn ? (
+          <div className="text-xs text-muted-foreground">
+            חסימה {formatNumber(row.thresholdCorrect)}/{formatNumber(partyCount)}
+          </div>
+        ) : null}
       </div>
     </li>
-  );
-}
-
-function MetricButton({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean;
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`h-10 rounded-full px-4 text-sm ${active ? "bg-primary text-primary-foreground" : "bg-muted"}`}
-    >
-      {children}
-    </button>
   );
 }
 

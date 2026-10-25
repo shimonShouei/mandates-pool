@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["pg", "node:sqlite"],
+  serverExternalPackages: ["@neondatabase/serverless", "ws", "node:sqlite"],
 };
 
 export default nextConfig;

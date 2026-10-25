@@ -30,13 +30,15 @@ export async function fetchOfficialResults(options: {
   let nationalWaf = false;
   let nationalNotFound = false;
 
+  const started = Date.now();
   for (const url of urls) {
+    if (Date.now() - started > 7000) break;
     attempted.push(url);
     const national = /\/nationalresults\/?$/.test(url);
     try {
       const response = await fetchImpl(url, {
         redirect: "follow",
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(4000),
         headers: {
           accept: "text/html,application/json;q=0.9,*/*;q=0.8",
           "accept-language": "he-IL,he;q=0.9,en;q=0.5",

@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatNumber, formatScore } from "@/lib/format";
 import type { GlobalBoard } from "@/lib/public-state";
 
-export function NationalBoardLive({ initial, page, metric }: { initial: GlobalBoard; page: number; metric: string }) {
+export function NationalBoardLive({ initial, page }: { initial: GlobalBoard; page: number }) {
   const [board, setBoard] = useState(initial);
 
   useEffect(() => {
@@ -14,7 +15,7 @@ export function NationalBoardLive({ initial, page, metric }: { initial: GlobalBo
     let cancelled = false;
     const load = async () => {
       try {
-        const response = await fetch(`/api/leaderboard?page=${page}&metric=${metric}`, { cache: "no-store" });
+        const response = await fetch(`/api/leaderboard?page=${page}`);
         if (!response.ok || cancelled) return;
         const next = (await response.json()) as GlobalBoard;
         if (!cancelled) setBoard(next);
@@ -29,18 +30,12 @@ export function NationalBoardLive({ initial, page, metric }: { initial: GlobalBo
       window.clearTimeout(kick);
       window.clearInterval(timer);
     };
-  }, [page, metric]);
+  }, [page]);
 
   return <BoardList board={board} />;
 }
 
 export function BoardList({ board }: { board: GlobalBoard }) {
-  const score = (row: GlobalBoard["rows"][number]) =>
-    board.metric === "absolute" ? row.absolute : row.euclidean.toFixed(2);
-  const place = (row: GlobalBoard["rows"][number]) => (board.metric === "absolute" ? row.absoluteRank : row.rank);
-  const inside = (row: GlobalBoard["rows"][number]) =>
-    board.metric === "absolute" ? row.groupAbsoluteRank : row.groupRank;
-
   if (!board.scoreable) {
     return (
       <p className="mt-6 rounded-xl bg-card px-4 py-3 text-sm ring-1 ring-foreground/10">
@@ -58,6 +53,7 @@ export function BoardList({ board }: { board: GlobalBoard }) {
 
   const from = (board.page - 1) * board.pageSize + 1;
   const to = from + board.rows.length - 1;
+  const bonusOn = board.thresholdBonus > 0;
 
   return (
     <div className="mt-4">
@@ -67,15 +63,23 @@ export function BoardList({ board }: { board: GlobalBoard }) {
       <ol className="mt-3 divide-y divide-border overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
         {board.rows.map((row) => (
           <li key={`${row.groupCode}-${row.alias}-${row.rank}`} className="grid grid-cols-[2.5rem_1fr_auto] items-center gap-3 px-3 py-3">
-            <span className="font-heading text-2xl tabular-nums text-primary">{place(row)}</span>
+            <span className="font-heading text-2xl tabular-nums text-primary">{formatNumber(row.rank)}</span>
             <div className="min-w-0">
               <div className="truncate font-medium">{row.alias}</div>
               <a href={`/g/${row.groupCode}`} className="block truncate text-sm text-primary underline-offset-4 hover:underline">
                 {row.groupName}
               </a>
-              <div className="text-xs text-muted-foreground">מקום {inside(row)} בקבוצה</div>
+              <div className="text-xs text-muted-foreground">מקום {formatNumber(row.groupRank)} בקבוצה</div>
             </div>
-            <span className="tabular-nums">{score(row)}</span>
+            <div className="text-end text-sm tabular-nums">
+              <div className="font-medium">{formatScore(row.misplaced)}</div>
+              <div className="text-xs text-muted-foreground">סטיות {formatNumber(row.absolute)}</div>
+              {bonusOn ? (
+                <div className="text-xs text-muted-foreground">
+                  חסימה {formatNumber(row.thresholdCorrect)}/{formatNumber(board.partyCount)}
+                </div>
+              ) : null}
+            </div>
           </li>
         ))}
       </ol>

@@ -38,6 +38,7 @@ export async function migrateLegacySite(db: Db): Promise<void> {
   await db.run(`UPDATE groups SET election_start = ? WHERE election_start IS NULL`, [pollsOpenIso()]);
   await db.run(`UPDATE groups SET public_board = 1 WHERE public_board IS NULL`);
   await addColumn(db, `ALTER TABLE site ADD COLUMN board_revision INTEGER NOT NULL DEFAULT 0`);
+  await addColumn(db, `ALTER TABLE site ADD COLUMN threshold_bonus REAL NOT NULL DEFAULT 0.25`);
 
   if (await hasColumn(db, "parties", "group_id")) {
     await hoistParties(db);

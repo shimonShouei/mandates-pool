@@ -4,7 +4,7 @@ import { cleanDisplayName, hashToken, nameKey, newCode, newId, newToken } from "
 import type { AdminParticipant, OwnView, PublicGroupState, PublicResults } from "./public-state";
 import { decideSeats, type PartyRef } from "./results/decide";
 import type { ParsedList, ParsedResults } from "./results/parse-cec";
-import { buildStandings, roundScore, toPublicStandings } from "./scoring";
+import { cleanThresholdBonus, roundScore, scoreGuess, DEFAULT_THRESHOLD_BONUS } from "./scoring";
 import { KNESSET_SEATS, checkSeatVector } from "./seats";
 import { betsLocked, isLocked, lockSchedule, pollsOpenIso } from "./time";
 
@@ -49,6 +49,7 @@ export type SiteSettings = {
   resultsOverride: boolean;
   lastFetchAttemptAt: string | null;
   fetchError: string | null;
+  thresholdBonus: number;
 };
 
 type SnapshotRow = {
@@ -186,6 +187,7 @@ export async function getSite(db: Db): Promise<SiteSettings> {
     results_override: number;
     last_fetch_attempt_at: string | null;
     last_fetch_error: string | null;
+    threshold_bonus: number | null;
   }>(`SELECT * FROM site WHERE id = 'site'`);
   if (!row) throw new GameError("הגדרות האתר לא נמצאו.");
   return {
@@ -194,23 +196,37 @@ export async function getSite(db: Db): Promise<SiteSettings> {
     resultsOverride: Number(row.results_override) === 1,
     lastFetchAttemptAt: row.last_fetch_attempt_at,
     fetchError: row.last_fetch_error,
+    thresholdBonus: row.threshold_bonus == null ? DEFAULT_THRESHOLD_BONUS : Number(row.threshold_bonus),
   };
 }
 
 export async function updateSite(
   db: Db,
-  patch: { knessetNumber?: number; preferComputed?: boolean },
+  patch: { knessetNumber?: number; preferComputed?: boolean; thresholdBonus?: number },
 ) {
   const site = await getSite(db);
   const knesset = patch.knessetNumber ?? site.knessetNumber;
   if (!Number.isInteger(knesset) || knesset < 20 || knesset > 40) {
     throw new GameError("מספר הכנסת לא נראה נכון.");
   }
-  await db.run(`UPDATE site SET knesset_number = ?, prefer_computed_seats = ? WHERE id = 'site'`, [
-    knesset,
-    patch.preferComputed == null ? (site.preferComputed ? 1 : 0) : patch.preferComputed ? 1 : 0,
-  ]);
+  let bonus = site.thresholdBonus;
+  if (patch.thresholdBonus != null) {
+    try {
+      bonus = cleanThresholdBonus(patch.thresholdBonus);
+    } catch (error) {
+      throw new GameError(error instanceof Error ? error.message : "משקל הבונוס לא תקין.");
+    }
+  }
+  await db.run(
+    `UPDATE site SET knesset_number = ?, prefer_computed_seats = ?, threshold_bonus = ? WHERE id = 'site'`,
+    [
+      knesset,
+      patch.preferComputed == null ? (site.preferComputed ? 1 : 0) : patch.preferComputed ? 1 : 0,
+      bonus,
+    ],
+  );
   if (patch.preferComputed != null) await recomputeCurrent(db);
+  await touchBoard(db);
 }
 
 export async function isGroupAdmin(db: Db, groupId: string, token: string | null): Promise<boolean> {
@@ -660,56 +676,29 @@ export async function loadScoreContext(db: Db): Promise<ScoreContext> {
 
 export async function getPublicState(db: Db, groupId: string, token: string | null): Promise<PublicGroupState> {
   const group = await mustGroup(db, groupId);
-  const { site, parties, actual, results, scoreable } = await loadScoreContext(db);
-  const participants = await db.all<{ id: string; display_name: string }>(
-    `SELECT id, display_name FROM participants WHERE group_id = ? ORDER BY created_at`,
-    [groupId],
-  );
-  const you = await participantFromToken(db, groupId, token);
-  const predictionRows = await db.all<{ participant_id: string; party_id: string; seats: number }>(
-    `SELECT participant_id, party_id, seats FROM predictions
-     WHERE participant_id IN (SELECT id FROM participants WHERE group_id = ?)`,
-    [groupId],
-  );
-  const byParticipant = new Map<string, Record<string, number>>();
-  for (const row of predictionRows) {
-    const bag = byParticipant.get(row.participant_id) ?? {};
-    bag[row.party_id] = Number(row.seats);
-    byParticipant.set(row.participant_id, bag);
-  }
-
-  const completeIds = new Set(
-    participants
-      .filter((participant) => {
-        const predicted = byParticipant.get(participant.id) ?? {};
-        return checkSeatVector(parties.map((party) => predicted[party.id] ?? 0)).ok;
-      })
-      .map((participant) => participant.id),
-  );
-
-  const internal = scoreable
-    ? buildStandings(
-        parties.map((party) => party.id),
-        actual,
-        participants
-          .filter((participant) => completeIds.has(participant.id))
-          .map((participant) => ({
-            id: participant.id,
-            alias: participant.display_name,
-            predicted: byParticipant.get(participant.id) ?? {},
-          })),
-      )
-    : [];
-
-  const partyById = new Map(parties.map((party) => [party.id, party]));
+  const { readGroupBoard } = await import("./board-cache");
+  const board = await readGroupBoard(db, groupId);
   const schedule = lockSchedule(group.electionStart, group.deadline);
   const locked = isLocked(schedule.lockAt);
+  const you = await participantFromToken(db, groupId, token);
   let own: OwnView | null = null;
   if (you) {
-    const predicted = byParticipant.get(you.id) ?? {};
+    const predictionRows = await db.all<{ party_id: string; seats: number }>(
+      `SELECT party_id, seats FROM predictions WHERE participant_id = ?`,
+      [you.id],
+    );
+    const predicted: Record<string, number> = {};
+    for (const row of predictionRows) predicted[row.party_id] = Number(row.seats);
+    const parties = board.parties;
     const total = parties.reduce((sum, party) => sum + (predicted[party.id] ?? 0), 0);
-    const submitted = completeIds.has(you.id);
-    const mine = internal.find((row) => row.participantId === you.id);
+    const submitted = checkSeatVector(parties.map((party) => predicted[party.id] ?? 0)).ok;
+    const guess = scoreGuess(
+      parties.map((party) => party.id),
+      predicted,
+      board.actual,
+      board.thresholdBonus,
+    );
+    const mine = board.standings.find((row) => row.alias === you.display_name);
     own = {
       alias: you.display_name,
       submitted,
@@ -723,20 +712,23 @@ export async function getPublicState(db: Db, groupId: string, token: string | nu
         seats: predicted[party.id] ?? 0,
       })),
       breakdown:
-        mine == null
+        mine == null || !board.scoreable
           ? null
           : {
               rank: mine.rank,
-              absoluteRank: mine.absoluteRank,
-              euclidean: roundScore(mine.euclidean),
-              absolute: mine.absolute,
-              parties: mine.diffs.map((diff) => ({
+              euclidean: roundScore(guess.euclidean),
+              absolute: guess.absolute,
+              misplaced: guess.misplaced,
+              score: roundScore(guess.score),
+              thresholdCorrect: guess.thresholdCorrect,
+              parties: guess.diffs.map((diff) => ({
                 partyId: diff.partyId,
-                name: partyById.get(diff.partyId)?.name ?? "",
-                color: partyById.get(diff.partyId)?.color ?? "#78716c",
+                name: parties.find((party) => party.id === diff.partyId)?.name ?? "",
+                color: parties.find((party) => party.id === diff.partyId)?.color ?? "#78716c",
                 predicted: diff.predicted,
                 actual: diff.actual,
                 diff: diff.diff,
+                passedCall: diff.passedCall,
               })),
             },
     };
@@ -751,15 +743,17 @@ export async function getPublicState(db: Db, groupId: string, token: string | nu
       lockAt: schedule.lockAt,
       lockReason: schedule.reason,
       locked,
-      knessetNumber: site.knessetNumber,
+      knessetNumber: board.knessetNumber,
     },
-    participantCount: participants.length,
-    completeCount: completeIds.size,
-    aliases: participants.map((participant) => participant.display_name),
-    fetchProblem: site.fetchError,
-    results,
-    standings: toPublicStandings(internal, you?.id),
+    participantCount: board.participantCount,
+    completeCount: board.completeCount,
+    aliases: board.aliases,
+    fetchProblem: board.fetchProblem,
+    results: board.results,
+    standings: board.standings.map((row) => ({ ...row, isYou: row.alias === you?.display_name })),
     own,
+    thresholdBonus: board.thresholdBonus,
+    partyCount: board.partyCount,
   };
 }
 

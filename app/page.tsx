@@ -54,6 +54,10 @@ export default function HomePage() {
         <Link href="/board" className="text-primary underline-offset-4 hover:underline">
           הדירוג הארצי, מכל הקבוצות
         </Link>
+        <span className="text-muted-foreground"> · </span>
+        <Link href="/scoring" className="text-primary underline-offset-4 hover:underline">
+          איך מחשבים את הציון
+        </Link>
       </p>
 
       <ol className="mt-8 space-y-4">
@@ -63,8 +67,8 @@ export default function HomePage() {
         <Step n="2" title="מחלקים בדיוק 120">
           מספר שלם לכל רשימה. 1 עד 3 מנדטים לא עוברים את אחוז החסימה, אז שם רושמים אפס או לפחות 4.
         </Step>
-        <Step n="3" title="המרחק קובע">
-          הניחושים ננעלים ב-07:00 ביום הבחירות, כשהקלפיות נפתחות. בדירוג רואים כינוי, קבוצה וציון. לא את הניחוש עצמו.
+        <Step n="3" title="הציון הוא מושבים לא במקום">
+          הניחושים ננעלים ב-07:00 ביום הבחירות, כשהקלפיות נפתחות. בדירוג רואים כינוי, קבוצה וכמה מושבים לא במקום. לא את הניחוש עצמו.
         </Step>
       </ol>
 

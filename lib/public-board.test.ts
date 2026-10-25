@@ -78,18 +78,26 @@ describe("national board", () => {
     expect(page2.rows[0].groupRank).toBe(2);
     expect(page2.rows[0].rank).toBe(3);
 
-    const byAbsolute = await globalLeaderboard(db, { metric: "absolute", pageSize: 10 });
-    expect(byAbsolute.rows.map((row) => row.alias)).toEqual(["נועה", "עידו", "תמר"]);
-    expect(byAbsolute.rows[1].absolute).toBe(4);
+    const all = await globalLeaderboard(db, { pageSize: 10 });
+    expect(all.rows.map((row) => row.alias)).toEqual(["נועה", "עידו", "תמר"]);
+    expect(all.rows[1].absolute).toBe(4);
+    expect(all.rows[1].misplaced).toBe(2);
+    expect(all.rows[1].rank).toBe(2);
+    expect(all.rows[1].groupRank).toBe(1);
 
-    const payload = JSON.stringify(board.rows.concat(page2.rows));
-    expect(payload).not.toMatch(/"seats"|"diffs"|"prediction"|"partyId"/);
+    const payload = JSON.stringify(all.rows);
+    expect(payload).not.toMatch(/"seats"|"diffs"|"prediction"|"partyId"|"passedCall"/);
     expect(payload).not.toContain("17");
-    for (const row of page2.rows) {
+    for (const row of all.rows) {
       expect(Object.keys(row).sort()).toEqual(
-        ["absolute", "absoluteRank", "alias", "euclidean", "groupAbsoluteRank", "groupCode", "groupName", "groupRank", "rank"].sort(),
+        ["absolute", "alias", "euclidean", "groupCode", "groupName", "groupRank", "misplaced", "rank", "score", "thresholdCorrect"].sort(),
       );
     }
+
+    const cached = await db.get<{ payload: string }>(`SELECT payload FROM board_cache WHERE id = 'global'`);
+    expect(cached?.payload).toContain("נועה");
+    const reread = await globalLeaderboard(db, { pageSize: 10 });
+    expect(reread.rows.map((row) => row.alias)).toEqual(all.rows.map((row) => row.alias));
 
     await updateGroup(db, beta.id, { publicBoard: false });
     const hidden = await globalLeaderboard(db, { pageSize: 10 });
@@ -155,5 +163,9 @@ describe("national board", () => {
     expect(again.rows).toHaveLength(40);
     expect(again.rows[0].alias).not.toBe(first.rows[0].alias);
     expect(JSON.stringify(first.rows)).not.toMatch(/"seats"/);
+    const cachedAt = Date.now();
+    const third = await globalLeaderboard(db, { page: 1, pageSize: 40 });
+    expect(Date.now() - cachedAt).toBeLessThan(400);
+    expect(third.rows[0]).toEqual(first.rows[0]);
   });
 });

@@ -231,9 +231,11 @@ export async function updateSiteAction(formData: FormData): Promise<ActionResult
     await requireAdmin();
     const db = await getDb();
     const knesset = Number(formData.get("knesset") || 0);
+    const bonusRaw = String(formData.get("thresholdBonus") ?? "").trim();
     await updateSite(db, {
       knessetNumber: knesset,
       preferComputed: formData.get("preferComputed") === "1",
+      thresholdBonus: bonusRaw === "" ? undefined : Number(bonusRaw),
     });
     paths();
     return { ok: true };

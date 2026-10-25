@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DonationLink } from "@/components/donation-link";
 
 export function Shell({
   children,
@@ -21,6 +22,12 @@ export function Shell({
           </Link>
         </div>
         {children}
+        <footer className="mt-12 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+          <Link href="/scoring" className="underline-offset-4 hover:underline">
+            איך מחשבים את הציון
+          </Link>
+          <DonationLink />
+        </footer>
       </div>
     </div>
   );

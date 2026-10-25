@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { migrateLegacySite } from "./legacy-migrate";
+import { pooledNeonUrl } from "./neon-url";
 import { INDEX_STATEMENTS, SCHEMA_STATEMENTS } from "./schema";
 
 export type RunResult = { changes: number };
@@ -178,13 +179,15 @@ export async function createSqliteDb(filename: string): Promise<Db> {
 }
 
 export async function createPgDb(connectionString: string): Promise<Db> {
-  const { Pool } = await import("pg");
-  const ssl = /sslmode=disable/.test(connectionString)
-    ? false
-    : /localhost|127\.0\.0\.1/.test(connectionString)
-      ? undefined
-      : { rejectUnauthorized: false };
-  const pool = new Pool({ connectionString, ssl });
+  const { Pool, neonConfig } = await import("@neondatabase/serverless");
+  const ws = await import("ws");
+  neonConfig.webSocketConstructor = ws.default;
+  const pool = new Pool({
+    connectionString: pooledNeonUrl(connectionString),
+    max: 1,
+    idleTimeoutMillis: 5_000,
+    connectionTimeoutMillis: 10_000,
+  });
   const db = new PgDb(pool);
   await migrate(db);
   return db;

@@ -89,6 +89,23 @@ export default async function AdminPage() {
             <input type="checkbox" name="preferComputed" value="1" defaultChecked={site.preferComputed} className="mt-1" />
             לחשב מנדטים בעצמנו גם כשוועדת הבחירות כבר מפרסמת מנדטים
           </label>
+          <div className="space-y-1.5">
+            <Label htmlFor="threshold-bonus">בונוס על כל ניחוש חסימה נכון</Label>
+            <Input
+              id="threshold-bonus"
+              name="thresholdBonus"
+              inputMode="decimal"
+              type="number"
+              min={0}
+              max={10}
+              step={0.05}
+              defaultValue={site.thresholdBonus}
+              className="h-11"
+            />
+            <p className="text-sm text-muted-foreground">
+              יורד מהציון על כל רשימה שניחשו נכון אם היא עוברת את אחוז החסימה. 0 מכבה את הבונוס. ברירת המחדל 0.25.
+            </p>
+          </div>
           <Button type="submit" className="h-11">
             שמירה
           </Button>

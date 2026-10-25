@@ -13,7 +13,9 @@
 5. התוצאות, רשימת המפלגות והסכמי העודפים משותפים לכל הקבוצות. אותם מושך או מזין רק מי שנכנס עם `ADMIN_SECRET` אל `/admin`. אם המשיכה מוועדת הבחירות נכשלת, מעלים את דף התוצאות מהדפדפן או מזינים מנדטים ידנית.
 6. הדירוג של הקבוצה מציג רק כינוי, מקום וציון. הדירוג הארצי ב-`/board` מוסיף את שם הקבוצה ואת המקום של אותו אדם בתוך הקבוצה שלו. אף אחד לא רואה את חלוקת המושבים של מישהו אחר. מנהל קבוצה יכול להוציא את הקבוצה מהדירוג הארצי. ברירת המחדל היא להופיע.
 
-המנצח נקבע לפי **מרחק אוקלידי**: שורש הסכום של ריבועי ההפרשים בין הניחוש לתוצאה. נמוך יותר עדיף. בדירוג מופיע גם **סכום הסטיות המוחלטות**, ואפשר למיין לפיו. שתי הפונקציות חיות ב-`lib/scoring.ts`.
+הציון הראשי הוא **סכום הסטיות המוחלטות**: לכל רשימה לוקחים את ההפרש בלי מינוס ומחברים. מושב שעבר מרשימה לרשימה נספר פעמיים, ולכן בדירוג מוצג גם החצי, **מושבים לא במקום**. נמוך יותר עדיף. אם לשני אנשים אותו ציון, שוברים תיקו לפי מרחק אוקלידי. הוא לא מחליף את הציון הראשי.
+
+על כל רשימה שניחשו נכון אם היא עוברת את אחוז החסימה מורידים משקל קטן. בניחוש, 4 ומעלה אומר «עוברת» ו-0 עד 3 אומר «לא». בתוצאה, כל מספר מושבים גדול מאפס אומר שהרשימה עברה. ברירת המחדל היא 0.25, ומנהל האתר יכול לשנות את המשקל או לשים 0 כדי לכבות את הבונוס. אותו ציון בקבוצה ובדירוג הארצי. הסבר בעברית פשוטה נמצא ב-`/scoring`. הפונקציות חיות ב-`lib/scoring.ts`.
 
 ## הרצה מקומית
 
@@ -38,9 +40,11 @@ npm run dev
 
 | משתנה | חובה | משמעות |
 | --- | --- | --- |
-| `ADMIN_SECRET` | לניהול האתר | סוד לתוצאות, לרשימות ולהסכמי העודפים. לא נדרש כדי לפתוח קבוצה. |
-| `CRON_SECRET` | בפרודקשן | וורסל שולחת `Authorization: Bearer <CRON_SECRET>` אל הרענון המתוזמן. |
-| `DATABASE_URL` | על ורסל | מחרוזת Postgres, למשל Neon או Supabase. מקומית אפשר בלי. |
+| `ADMIN_SECRET` | לניהול האתר | סוד לתוצאות, לרשימות, להסכמי העודפים ולמשקל בונוס החסימה. לא נדרש כדי לפתוח קבוצה. |
+| `CRON_SECRET` | בפרודקשן | וורסל שולחת `Authorization: Bearer <CRON_SECRET>` אל הרענון היומי. |
+| `DATABASE_URL` | על ורסל | מחרוזת Postgres. כתובת Neon בלי `-pooler` מוחלפת אוטומטית ל-pooler. |
+| `DATABASE_DIRECT` | לא | `1` מבטל את ההחלפה ל-pooler. |
+| `DONATION_URL` | לא | קישור לפרגון, למשל Buy Me a Coffee, פייבוקס או ביט. בלי כתובת http או https הקישור לא מופיע. |
 | `RESULTS_SOURCE_URL` | לא | כתובת חלופית לדף התוצאות, אם רוצים לעקוף את ברירת המחדל. |
 | `SQLITE_PATH` | לא | נתיב לקובץ SQLite המקומי. |
 
@@ -48,14 +52,25 @@ npm run dev
 
 SQLite לא נשמר על ורסל. צריך Postgres.
 
-1. צרו מסד ב-[Neon](https://neon.tech) (יש מסלול חינמי). העתיקו את מחרוזת החיבור **עם ה-pooler**, כולל `sslmode=require`.
+1. צרו מסד ב-[Neon](https://neon.tech) במסלול החינמי. העתיקו מחרוזת חיבור עם `sslmode=require`. אפשר את הכתובת הרגילה: האפליקציה מוסיפה `-pooler` בעצמה, אלא אם `DATABASE_DIRECT=1`.
 2. דחפו את הריפו לגיטהאב, אם עוד אין שם ריפו.
-3. ב-[Vercel](https://vercel.com) בחרו Import Project, וחברו את הריפו. הפריימוורק מזוהה כ-Next.js.
-4. הגדירו בסביבה של הפרויקט: `ADMIN_SECRET`, `CRON_SECRET`, `DATABASE_URL`.
+3. ב-[Vercel](https://vercel.com) בחרו Import Project, וחברו את הריפו. הפריימוורק מזוהה כ-Next.js. מסלול Hobby מספיק.
+4. הגדירו בסביבה של הפרויקט: `ADMIN_SECRET`, `CRON_SECRET`, `DATABASE_URL`. אם יש קישור פרגון, הוסיפו גם `DONATION_URL`.
 5. פרסו. הכתובת תהיה מהצורה `https://<project>.vercel.app`.
 6. שלחו את `https://<project>.vercel.app`. כל אחד פותח קבוצה מדף הבית. `https://<project>.vercel.app/board` הוא הדירוג הארצי. `https://<project>.vercel.app/admin` מיועד רק למי שמחזיק ב-`ADMIN_SECRET`.
 
-`vercel.json` קובע רענון כל חמש דקות ב-`/api/cron/refresh-results`. במסלול Hobby של ורסל המגבלה בפועל היא לרוב פעם ביום. בנוסף, כל פתיחה של הדירוג מרעננת לבד אם הצילום האחרון ישן משלוש דקות, אז ערב הבחירות מספיק שמישהו ישאיר את הדף פתוח.
+## מסלול חינמי בליל הבחירות
+
+האתר בנוי ל-Vercel Hobby ול-Neon החינמי, בלי להסתמך על cron תכוף.
+
+- Hobby מריץ משימה מתוזמנת בערך פעם ביום. `vercel.json` קובע `0 3 * * *` על `/api/cron/refresh-results`. הרענון האמיתי הוא לפי דרישה.
+- פתיחת הדירוג הארצי (`GET /api/leaderboard`) או דירוג הקבוצה הציבורי (`GET /api/groups/[code]/standings`) בודקת אם מותר למשוך. מנעול על `last_fetch_attempt_at` מבטיח משיכה אחת לכל היותר בכל שלוש דקות, לכל המבקרים יחד.
+- כל כתובת מקבלת עד 4 שניות, והלולאה נעצרת אחרי 7 שניות. כך הרענון נכנס במגבלת הפונקציה של Hobby, בערך 10 שניות.
+- הדירוג של כל קבוצה והדירוג הארצי מחושבים פעם אחת כשמשתנים התוצאה, הניחושים, משקל הבונוס או רשימת הקבוצות, ונשמרים ב-`board_cache`. אחר כך קוראים את הצילום.
+- התשובות הציבוריות נשלחות עם `Cache-Control: public, max-age=0, s-maxage=30, stale-while-revalidate=120`. הדפדפן לא שומר אותן. ה-CDN יכול להחזיק חצי דקה, ועוד שתי דקות של עותק ישן בזמן שהוא מרענן.
+- הניחוש הפרטי הוא `GET /api/groups/[code]/me` עם `private, no-store`. הוא לא מושך את ועדת הבחירות, והדף מבקש אותו רק כשחותמת התוצאות משתנה.
+- החיבור ל-Neon הוא `@neondatabase/serverless`, חיבור אחד לכל מופע (`max: 1`), דרך ה-pooler. כך לא אוכלים את מכסת החיבורים הישירים של המסלול החינמי.
+- קיבולת צפויה: עשרות קבוצות ואלפי ניחושים שלמים הם מעבר אחד בזיכרון. הבדיקה מריצה 120 ניחושים בנוחות. מה שיקר הוא המשיכה מוועדת הבחירות, והיא מוגבלת לפעם בשלוש דקות לכל האתר. בליל הבחירות רוב הקריאות לדירוג נענות מה-CDN ומהצילום שבמסד.
 
 ## רשימת המפלגות
 
@@ -106,11 +121,13 @@ Participants join with an invite link and a nickname. A random token in an httpO
 
 Guesses lock automatically at 07:00 Asia/Jerusalem on election day, when polling stations open. A new group defaults to 27 October 2026. The group admin can set an earlier lock, and cannot keep guesses open past polls opening. The clock follows Israel daylight saving time. After the lock, joining and editing are rejected on the server.
 
-A group's board shows nickname, rank, and score only. The national board at `/board` adds the group name and that person's rank inside their own group. It is paginated (40 rows). Groups are included unless their admin opts out. Per-party guesses are never on a public payload. `GET /api/leaderboard` returns the same public fields. `GET /api/groups/[code]/leaderboard` stays `Cache-Control: private, no-store`.
+A group's board shows nickname, rank, and score only. The national board at `/board` adds the group name and that person's rank inside their own group. It is paginated (40 rows). Groups are included unless their admin opts out. Per-party guesses are never on a public payload. `GET /api/leaderboard` and `GET /api/groups/[code]/standings` return public fields with a short CDN cache. `GET /api/groups/[code]/me` is the private bet and is `Cache-Control: private, no-store`.
 
 Public creation allows 5 new groups per hour per network address. A group name is 2 to 40 characters.
 
-The winner is the lowest **Euclidean distance** between the guess vector and the actual vector. The leaderboard also shows the **sum of absolute errors**, and can be sorted by it. Both functions are isolated in `lib/scoring.ts`.
+The primary score is the **sum of absolute seat errors**. A seat that moves from one list to another is counted twice, so the boards also show half of that sum as **seats placed wrong**. Lower is better. Euclidean distance breaks ties only. It does not replace the primary score.
+
+A small bonus is subtracted for each party whose pass or fail of the electoral threshold was called correctly. A guess of 4 or more means “passes”; 0–3 means “fails”. Any positive official seat total means the list passed. The default weight is 0.25. The site admin can change it, and 0 turns the bonus off. Group boards and the national board use the same score. A plain-Hebrew explanation is at `/scoring`. The functions live in `lib/scoring.ts`.
 
 ## Local
 
@@ -127,13 +144,26 @@ Install from Chrome or Edge with “Install app” / “Add to home screen”. O
 
 ## Deploy so friends have a public URL
 
-1. Create a Postgres database on [Neon](https://neon.tech) or Supabase and copy the pooled connection string (`sslmode=require`).
+1. Create a Postgres database on the [Neon](https://neon.tech) free plan and copy a connection string with `sslmode=require`. A host without `-pooler` is rewritten to the pooler unless `DATABASE_DIRECT=1`.
 2. Push this repo to GitHub.
-3. Import it on [Vercel](https://vercel.com) as a Next.js app.
-4. Set `ADMIN_SECRET`, `CRON_SECRET`, and `DATABASE_URL`. SQLite will not persist on Vercel; the app refuses to boot there without `DATABASE_URL`.
-5. Share `https://<project>.vercel.app`. People create their own groups there. `/board` is the national leaderboard. `/admin` is only for the `ADMIN_SECRET` holder.
+3. Import it on [Vercel](https://vercel.com) as a Next.js app. The Hobby plan is enough.
+4. Set `ADMIN_SECRET`, `CRON_SECRET`, and `DATABASE_URL`. Add `DONATION_URL` only if you want a support link. SQLite will not persist on Vercel; the app refuses to boot there without `DATABASE_URL`.
+5. Share `https://<project>.vercel.app`. People create their own groups there. `/board` is the national leaderboard. `/scoring` explains the score in Hebrew. `/admin` is only for the `ADMIN_SECRET` holder.
 
-`vercel.json` schedules `/api/cron/refresh-results` every five minutes. Vercel Hobby often only runs crons once a day. Opening the leaderboard also refreshes when the latest snapshot is older than three minutes, which is the practical path on Hobby.
+## Free tier on election night
+
+The app is meant to run on Vercel Hobby and Neon’s free plan, without a frequent cron.
+
+- Hobby runs a scheduled job about once a day. `vercel.json` sets `0 3 * * *` on `/api/cron/refresh-results`. Freshness comes from on-demand refresh.
+- Opening the national board (`GET /api/leaderboard`) or a public group board (`GET /api/groups/[code]/standings`) checks a lock on `last_fetch_attempt_at`. The Central Elections Committee is fetched at most once every three minutes, across all visitors.
+- Each candidate URL gets 4 seconds, and the loop stops after 7 seconds, inside Hobby’s function limit of about 10 seconds.
+- Group boards and the national board are computed once per change of results, guesses, bonus weight, or group list, and stored in `board_cache`. Later reads serve that snapshot.
+- Public responses use `Cache-Control: public, max-age=0, s-maxage=30, stale-while-revalidate=120`. Browsers do not keep them. The CDN may keep them for 30 seconds, plus two minutes of a stale copy while it refreshes.
+- A person’s own bet is `GET /api/groups/[code]/me` with `private, no-store`. That route does not fetch the committee, and the page asks for it only when the results timestamp changes.
+- Neon uses `@neondatabase/serverless` with one connection per instance (`max: 1`) through the pooler, so the free plan’s direct-connection quota stays unused.
+- Expected capacity: dozens of groups and thousands of complete guesses are one in-memory pass. The test suite scores 120 guesses comfortably. The expensive step is the committee fetch, and that is limited to once every three minutes for the whole site. On election night most leaderboard reads are answered by the CDN and the stored snapshot.
+
+`DONATION_URL`, when set to an http or https link, shows a small “פרגון לקפה” link in the footer and on the leaderboard. Anything else stays hidden.
 
 ## Parties
 

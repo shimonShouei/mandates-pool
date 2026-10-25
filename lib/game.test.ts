@@ -67,6 +67,7 @@ describe("pool privacy and winner", () => {
     expect(anon.standings[0]).toMatchObject({ rank: 1, euclidean: 0, absolute: 0, isYou: false });
     expect(anon.standings[1].rank).toBe(2);
     expect(anon.standings[1].absolute).toBe(4);
+    expect(anon.standings[1].misplaced).toBe(2);
     expect(anon.standings.every((row) => !("diffs" in row) && !("prediction" in row))).toBe(true);
     expect(anon.results?.parties.map((party) => party.seats)).not.toContain(17);
     expect(anon.results?.parties.map((party) => party.seats)).not.toContain(48);
@@ -97,7 +98,7 @@ describe("pool privacy and winner", () => {
       expect(Object.keys(row).sort()).toEqual(["alias", "complete", "joinedAt"]);
       expect(row.complete).toBe(true);
     }
-    expect(JSON.stringify(adminRows)).not.toContain("17");
+    expect(JSON.stringify(adminRows.map((row) => ({ alias: row.alias, complete: row.complete })))).not.toContain("17");
   });
 
   it("locks bets after the deadline and keeps them private", async () => {
