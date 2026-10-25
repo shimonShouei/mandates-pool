@@ -17,7 +17,7 @@ const frank = Frank_Ruhl_Libre({
 
 export const metadata: Metadata = {
   title: "מנדטים",
-  description: "ניחוש מושבים לכנסת ה-26. פותחים קבוצה, הניחוש נשאר חסוי, והדירוג נקבע לפי מושבים לא במקום.",
+  description: "ניחוש מושבים לכנסת ה-26. פותחים קבוצה, והדירוג נקבע לפי מושבים לא במקום.",
   applicationName: "מנדטים",
   robots: { index: true, follow: true },
   appleWebApp: { capable: true, title: "מנדטים", statusBarStyle: "default" },

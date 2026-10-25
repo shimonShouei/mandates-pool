@@ -7,7 +7,7 @@ export default function ScoringPage() {
       <header className="mt-8 space-y-3">
         <h1 className="font-heading text-5xl leading-none">איך מחשבים את הציון</h1>
         <p className="text-lg leading-relaxed">
-          אותו חישוב בקבוצה ובדירוג הארצי. נמוך יותר עדיף. אף אחד לא רואה איך מישהו אחר חילק את המושבים.
+          אותו חישוב בקבוצה ובדירוג הארצי. נמוך יותר עדיף. בדירוג הארצי ובקבוצה אנונימית רואים ציון, לא את חלוקת המושבים. בקבוצה פתוחה החברים רואים את הניחוש לפי הכלל שנקבע לפני הנעילה.
         </p>
       </header>
 

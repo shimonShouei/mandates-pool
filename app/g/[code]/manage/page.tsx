@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { lockNow, markPaidAction, updateGroupAction } from "@/app/actions";
 import { ActionForm } from "@/components/action-form";
+import { VisibilityForm } from "@/components/visibility-form";
 import { ClaimAdmin } from "@/components/claim-admin";
 import { CopyCode } from "@/components/copy-code";
 import { CopyLink } from "@/components/copy-link";
@@ -11,10 +12,11 @@ import { Label } from "@/components/ui/label";
 import { currentUserId } from "@/auth";
 import { getDb } from "@/lib/db";
 import { formatWhen } from "@/lib/format";
-import { getGroupByCode, isGroupAdmin, listParticipantsAdmin } from "@/lib/game";
+import { ruleLabel } from "@/lib/bet-history";
+import { getGroupByCode, isGroupAdmin, listParticipantsAdmin, listVisibilityLog } from "@/lib/game";
 import { readGroupAdminToken } from "@/lib/session";
 import { STAKE_NOTE } from "@/lib/payout";
-import { isoToJerusalemLocal, lockSchedule } from "@/lib/time";
+import { isLocked, isoToJerusalemLocal, lockSchedule } from "@/lib/time";
 
 export default async function ManageGroupPage({
   params,
@@ -65,7 +67,9 @@ export default async function ManageGroupPage({
   }
 
   const people = await listParticipantsAdmin(db, group.id);
+  const visibilityLog = await listVisibilityLog(db, group.id);
   const schedule = lockSchedule(group.electionStart, group.deadline);
+  const locked = isLocked(schedule.lockAt);
   const splitText = group.payoutSplit.join("/");
   const splitPreset = splitText === "100" || splitText === "60/30/10" ? splitText : "custom";
   const stakeValue = group.stakeAgorot % 100 === 0 ? String(group.stakeAgorot / 100) : (group.stakeAgorot / 100).toFixed(2);
@@ -102,6 +106,39 @@ export default async function ManageGroupPage({
           </p>
         )}
       </div>
+
+      <section className="mt-6 space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+        <h2 className="font-heading text-2xl">חשיפת הניחושים</h2>
+        <p className="text-sm">{ruleLabel(group.visibility, group.revealBeforeLock)}</p>
+        <p className="text-sm text-muted-foreground">
+          ברירת המחדל אנונימית. מעבר לפתוחה אפשרי רק לפני הנעילה, ואחרי אזהרה. הדירוג הארצי וחוכמת ההמונים נשארים בלי ניחוש
+          של אדם. המייל לא מוצג.
+        </p>
+        {locked ? (
+          <p className="text-sm">אחרי הנעילה אי אפשר לשנות את הכלל. מי שניחש ידע אותו מראש.</p>
+        ) : (
+          <VisibilityForm code={group.code} visibility={group.visibility} revealBeforeLock={group.revealBeforeLock} />
+        )}
+        {visibilityLog.length > 0 ? (
+          <div className="space-y-1 text-sm">
+            <h3 className="font-medium">שינויים בכלל</h3>
+            <ul className="space-y-1 text-muted-foreground">
+              {visibilityLog.map((row) => (
+                <li key={row.changedAt}>
+                  {formatWhen(row.changedAt)} · {row.fromVisibility === "open" ? "פתוחה" : "אנונימית"} שונתה ל
+                  {row.toVisibility === "open" ? "פתוחה" : "אנונימית"}
+                  {row.toVisibility === "open"
+                    ? row.toRevealBeforeLock
+                      ? ", גלוי גם לפני הנעילה"
+                      : ", גלוי אחרי הנעילה"
+                    : ""}
+                  . {row.via === "backup" ? "קישור הגיבוי" : "החשבון המנהל"}.
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
 
       <section className="mt-6 space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
         <h2 className="font-heading text-2xl">הקבוצה</h2>
@@ -190,7 +227,7 @@ export default async function ManageGroupPage({
       <section className="mt-6 space-y-2">
         <h2 className="font-heading text-2xl">משתתפים</h2>
         <p className="text-sm text-muted-foreground">
-          רואים מי נכנס ואם הניחוש שלו שלם. לא את המנדטים. סימון התשלום גלוי רק כאן.
+          רואים מי נכנס ואם הניחוש שלו שלם. את המנדטים עצמם רואים בדף הקבוצה, ורק לפי כלל החשיפה. סימון התשלום גלוי רק כאן.
         </p>
         {people.length === 0 ? <p className="text-sm">עוד אין משתתפים.</p> : null}
         {people.length > 0 ? (

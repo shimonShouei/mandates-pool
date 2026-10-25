@@ -64,6 +64,30 @@ export type OwnBreakdown = {
   }[];
 };
 
+export type BetVisibility = "anonymous" | "open";
+
+export type BetChange = {
+  partyId: string;
+  name: string;
+  color: string;
+  before: number;
+  after: number;
+};
+
+/** One saved version, compared with the previous save. The first version starts from zero. */
+export type BetRevision = {
+  savedAt: string;
+  changes: BetChange[];
+};
+
+export type RevealedBet = {
+  alias: string;
+  isYou: boolean;
+  submitted: boolean;
+  prediction: OwnPrediction[];
+  history: BetRevision[];
+};
+
 export type OwnView = {
   alias: string;
   submitted: boolean;
@@ -71,6 +95,7 @@ export type OwnView = {
   total: number;
   prediction: OwnPrediction[];
   breakdown: OwnBreakdown | null;
+  history: BetRevision[];
 };
 
 /** Public group board. No seat vector and no "you" flag. */
@@ -97,6 +122,8 @@ export type PublicGroupState = {
     lockReason: LockReason;
     locked: boolean;
     knessetNumber: number;
+    visibility: BetVisibility;
+    revealBeforeLock: boolean;
   };
   participantCount: number;
   completeCount: number;
@@ -106,6 +133,8 @@ export type PublicGroupState = {
   standings: GroupStanding[];
   stake: GroupStake | null;
   own: OwnView | null;
+  /** Full bets of people in this group. Null unless this viewer is allowed to see them. */
+  revealed: RevealedBet[] | null;
   thresholdBonus: number;
   partyCount: number;
 };

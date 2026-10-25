@@ -22,6 +22,8 @@ export const SCHEMA_STATEMENTS = [
     owner_user_id TEXT,
     stake_agorot INTEGER NOT NULL DEFAULT 0,
     payout_split TEXT NOT NULL DEFAULT '100',
+    bet_visibility TEXT NOT NULL DEFAULT 'anonymous',
+    reveal_before_lock INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS parties (
@@ -148,6 +150,23 @@ export const SCHEMA_STATEMENTS = [
     computed_at TEXT NOT NULL,
     lock_until TEXT
   )`,
+  `CREATE TABLE IF NOT EXISTS bet_versions (
+    id TEXT PRIMARY KEY,
+    participant_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    saved_at TEXT NOT NULL,
+    seats TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS visibility_log (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL,
+    changed_at TEXT NOT NULL,
+    from_visibility TEXT NOT NULL,
+    to_visibility TEXT NOT NULL,
+    from_reveal INTEGER NOT NULL,
+    to_reveal INTEGER NOT NULL,
+    via TEXT NOT NULL
+  )`,
 ];
 
 export const INDEX_STATEMENTS = [
@@ -160,4 +179,7 @@ export const INDEX_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_groups_public ON groups(public_board, created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_rows_snapshot ON result_rows(snapshot_id)`,
   `CREATE INDEX IF NOT EXISTS idx_creation_log_ip ON creation_log(ip_hash, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_bet_versions_participant ON bet_versions(participant_id, saved_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_bet_versions_group ON bet_versions(group_id, saved_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_visibility_log_group ON visibility_log(group_id, changed_at)`,
 ];

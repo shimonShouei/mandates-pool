@@ -13,11 +13,13 @@ export function JoinForm({
   lockAt,
   locked,
   serverNow,
+  policy,
 }: {
   code: string;
   lockAt: string;
   locked: boolean;
   serverNow: number;
+  policy: string;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +56,7 @@ export function JoinForm({
           className="h-11 text-base"
         />
         <p className="text-sm text-muted-foreground">
-          הכינוי מופיע בדירוג. אפשר שם בדוי. הניחוש נשאר על החשבון, והמייל לא מוצג.
+          הכינוי מופיע בדירוג. אפשר שם בדוי. הניחוש נשאר על החשבון. {policy}
         </p>
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}

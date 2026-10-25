@@ -1,7 +1,17 @@
 import { safeEqual } from "./auth";
+import { exposureLevel, membersCanSeeBets, parseSeatJson, revisionsFromVersions } from "./bet-history";
 import type { Db } from "./db";
 import { cleanDisplayName, hashToken, nameKey, newCode, newId, newToken } from "./ids";
-import type { AdminParticipant, OwnView, PublicGroupState, PublicResults } from "./public-state";
+import type {
+  AdminParticipant,
+  BetRevision,
+  BetVisibility,
+  OwnPrediction,
+  OwnView,
+  PublicGroupState,
+  PublicResults,
+  RevealedBet,
+} from "./public-state";
 import { decideSeats, type PartyRef } from "./results/decide";
 import type { ParsedList, ParsedResults } from "./results/parse-cec";
 import { cleanCrowdMin, DEFAULT_CROWD_MIN } from "./crowd";
@@ -45,6 +55,8 @@ type GroupRow = {
   owner_user_id: string | null;
   stake_agorot: number | null;
   payout_split: string | null;
+  bet_visibility: string | null;
+  reveal_before_lock: number | null;
   created_at: string;
 };
 
@@ -208,6 +220,93 @@ export async function updateGroupAsAdmin(
     throw new GameError("נדרש החשבון שפתח את הקבוצה, או קישור הניהול.");
   }
   await updateGroup(db, groupId, patch);
+}
+
+export type VisibilityChange = {
+  changedAt: string;
+  fromVisibility: BetVisibility;
+  toVisibility: BetVisibility;
+  fromRevealBeforeLock: boolean;
+  toRevealBeforeLock: boolean;
+  via: "account" | "backup";
+};
+
+/**
+ * Anonymous stays the default. Opening a group, or showing bets before the lock,
+ * is only allowed while bets are still open, and only with an explicit confirm.
+ */
+export async function setBetVisibility(
+  db: Db,
+  groupId: string,
+  token: string | null,
+  userId: string | null,
+  next: { visibility: BetVisibility; revealBeforeLock: boolean },
+  confirm: boolean,
+  now = Date.now(),
+) {
+  if (!(await isGroupAdmin(db, groupId, token, userId))) {
+    throw new GameError("נדרש החשבון שפתח את הקבוצה, או קישור הניהול.");
+  }
+  const group = await mustGroup(db, groupId);
+  if (betsLocked(group.electionStart, group.deadline, now)) {
+    throw new GameError("אחרי הנעילה אי אפשר לשנות את כלל החשיפה.");
+  }
+  if (next.visibility !== "anonymous" && next.visibility !== "open") {
+    throw new GameError("בחרו אנונימית או פתוחה.");
+  }
+  const revealBeforeLock = next.visibility === "open" && next.revealBeforeLock;
+  const same = group.visibility === next.visibility && group.revealBeforeLock === revealBeforeLock;
+  if (same) return;
+  const opening = exposureLevel(next.visibility, revealBeforeLock) > exposureLevel(group.visibility, group.revealBeforeLock);
+  if (opening && !confirm) {
+    throw new GameError("פתיחת הניחושים דורשת אישור. חברי הקבוצה יראו את חלוקת המושבים.");
+  }
+  const owner = await db.get<{ owner_user_id: string | null }>(`SELECT owner_user_id FROM groups WHERE id = ?`, [groupId]);
+  const via = userId && owner?.owner_user_id === userId ? "account" : "backup";
+  await db.transaction(async (tx) => {
+    await tx.run(`UPDATE groups SET bet_visibility = ?, reveal_before_lock = ? WHERE id = ?`, [
+      next.visibility,
+      revealBeforeLock ? 1 : 0,
+      groupId,
+    ]);
+    await tx.run(
+      `INSERT INTO visibility_log (id, group_id, changed_at, from_visibility, to_visibility, from_reveal, to_reveal, via)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        newId(),
+        groupId,
+        new Date(now).toISOString(),
+        group.visibility,
+        next.visibility,
+        group.revealBeforeLock ? 1 : 0,
+        revealBeforeLock ? 1 : 0,
+        via,
+      ],
+    );
+  });
+}
+
+export async function listVisibilityLog(db: Db, groupId: string): Promise<VisibilityChange[]> {
+  const rows = await db.all<{
+    changed_at: string;
+    from_visibility: string;
+    to_visibility: string;
+    from_reveal: number;
+    to_reveal: number;
+    via: string;
+  }>(
+    `SELECT changed_at, from_visibility, to_visibility, from_reveal, to_reveal, via
+     FROM visibility_log WHERE group_id = ? ORDER BY changed_at DESC`,
+    [groupId],
+  );
+  return rows.map((row) => ({
+    changedAt: row.changed_at,
+    fromVisibility: row.from_visibility === "open" ? "open" : "anonymous",
+    toVisibility: row.to_visibility === "open" ? "open" : "anonymous",
+    fromRevealBeforeLock: Number(row.from_reveal) === 1,
+    toRevealBeforeLock: Number(row.to_reveal) === 1,
+    via: row.via === "backup" ? "backup" : "account",
+  }));
 }
 
 export async function getSite(db: Db): Promise<SiteSettings> {
@@ -610,6 +709,13 @@ async function writePrediction(
         [participantId, party.id, seats[party.id], savedAt],
       );
     }
+    await tx.run(`INSERT INTO bet_versions (id, participant_id, group_id, saved_at, seats) VALUES (?, ?, ?, ?, ?)`, [
+      newId(),
+      participantId,
+      groupId,
+      savedAt,
+      JSON.stringify(seats),
+    ]);
   });
   await touchBoard(db);
   return { warnings: check.warnings };
@@ -631,6 +737,7 @@ async function removeParticipant(db: Db, groupId: string, participantId: string,
   const group = await mustGroup(db, groupId);
   assertBetsOpen(group, now);
   await db.transaction(async (tx) => {
+    await tx.run(`DELETE FROM bet_versions WHERE participant_id = ?`, [participantId]);
     await tx.run(`DELETE FROM predictions WHERE participant_id = ?`, [participantId]);
     await tx.run(`DELETE FROM participants WHERE id = ?`, [participantId]);
   });
@@ -895,6 +1002,7 @@ export async function getPublicState(
   groupId: string,
   token: string | null,
   userId: string | null = null,
+  viewerIsAdmin = false,
 ): Promise<PublicGroupState> {
   const group = await mustGroup(db, groupId);
   const { readGroupBoard } = await import("./board-cache");
@@ -954,8 +1062,20 @@ export async function getPublicState(
                 passedCall: diff.passedCall,
               })),
             },
+      history: [],
     };
   }
+
+  const names = board.parties.map((party) => ({
+    id: party.id,
+    name: party.name,
+    ballot: party.ballot,
+    color: party.color,
+  }));
+  if (own && you) own.history = await revisionsForParticipant(db, you.id, names);
+  const revealed = membersCanSeeBets(group, locked) && (you != null || viewerIsAdmin)
+    ? await loadRevealedBets(db, groupId, names, you?.id ?? null)
+    : null;
 
   return {
     group: {
@@ -967,6 +1087,8 @@ export async function getPublicState(
       lockReason: schedule.reason,
       locked,
       knessetNumber: board.knessetNumber,
+      visibility: group.visibility,
+      revealBeforeLock: group.revealBeforeLock,
     },
     participantCount: board.participantCount,
     completeCount: board.completeCount,
@@ -976,6 +1098,7 @@ export async function getPublicState(
     standings: board.standings.map((row) => ({ ...row, isYou: row.alias === you?.display_name })),
     stake: board.stake,
     own,
+    revealed,
     thresholdBonus: board.thresholdBonus,
     partyCount: board.partyCount,
   };
@@ -1069,6 +1192,78 @@ async function snapshotRows(db: Db, snapshotId: string) {
   return db.all<ResultRow>(`SELECT * FROM result_rows WHERE snapshot_id = ?`, [snapshotId]);
 }
 
+type NamedParty = { id: string; name: string; ballot: string; color: string };
+
+async function revisionsForParticipant(db: Db, participantId: string, parties: NamedParty[]): Promise<BetRevision[]> {
+  const rows = await db.all<{ saved_at: string; seats: string }>(
+    `SELECT saved_at, seats FROM bet_versions WHERE participant_id = ? ORDER BY saved_at, id`,
+    [participantId],
+  );
+  return revisionsFromVersions(
+    parties,
+    rows.map((row) => ({ savedAt: row.saved_at, seats: parseSeatJson(row.seats) })),
+  );
+}
+
+async function loadRevealedBets(
+  db: Db,
+  groupId: string,
+  parties: NamedParty[],
+  viewerParticipantId: string | null,
+): Promise<RevealedBet[]> {
+  const people = await db.all<{ id: string; display_name: string }>(
+    `SELECT id, display_name FROM participants WHERE group_id = ? ORDER BY created_at, display_name`,
+    [groupId],
+  );
+  const preds = await db.all<{ participant_id: string; party_id: string; seats: number }>(
+    `SELECT pr.participant_id, pr.party_id, pr.seats
+     FROM predictions pr
+     JOIN participants p ON p.id = pr.participant_id
+     WHERE p.group_id = ?`,
+    [groupId],
+  );
+  const versions = await db.all<{ participant_id: string; saved_at: string; seats: string }>(
+    `SELECT v.participant_id, v.saved_at, v.seats
+     FROM bet_versions v
+     JOIN participants p ON p.id = v.participant_id
+     WHERE v.group_id = ?
+     ORDER BY v.saved_at, v.id`,
+    [groupId],
+  );
+  const byPerson = new Map<string, Record<string, number>>();
+  for (const row of preds) {
+    const bag = byPerson.get(row.participant_id) ?? {};
+    bag[row.party_id] = Number(row.seats);
+    byPerson.set(row.participant_id, bag);
+  }
+  const historyByPerson = new Map<string, { savedAt: string; seats: Record<string, number> }[]>();
+  for (const row of versions) {
+    const list = historyByPerson.get(row.participant_id) ?? [];
+    list.push({ savedAt: row.saved_at, seats: parseSeatJson(row.seats) });
+    historyByPerson.set(row.participant_id, list);
+  }
+  return people.map((person) => {
+    const predicted = byPerson.get(person.id) ?? {};
+    const submitted = Object.keys(predicted).length > 0;
+    const prediction: OwnPrediction[] = submitted
+      ? parties.map((party) => ({
+          partyId: party.id,
+          name: party.name,
+          ballot: party.ballot,
+          color: party.color,
+          seats: predicted[party.id] ?? 0,
+        }))
+      : [];
+    return {
+      alias: person.display_name,
+      isYou: person.id === viewerParticipantId,
+      submitted,
+      prediction,
+      history: revisionsFromVersions(parties, historyByPerson.get(person.id) ?? []),
+    };
+  });
+}
+
 async function mustGroup(db: Db, groupId: string) {
   const group = await getGroupById(db, groupId);
   if (!group) throw new GameError("הקבוצה לא נמצאה.");
@@ -1088,6 +1283,8 @@ export type Group = {
   publicBoard: boolean;
   stakeAgorot: number;
   payoutSplit: number[];
+  visibility: BetVisibility;
+  revealBeforeLock: boolean;
   createdAt: string;
   hasAdminLink: boolean;
   ownerUserId: string | null;
@@ -1103,6 +1300,8 @@ function presentGroup(row: GroupRow): Group {
     publicBoard: Number(row.public_board) === 1,
     stakeAgorot: Number(row.stake_agorot) || 0,
     payoutSplit: parseStoredSplit(row.payout_split),
+    visibility: row.bet_visibility === "open" ? "open" : "anonymous",
+    revealBeforeLock: Number(row.reveal_before_lock) === 1,
     createdAt: row.created_at,
     hasAdminLink: Boolean(row.admin_token_hash),
     ownerUserId: row.owner_user_id ?? null,

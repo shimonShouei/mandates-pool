@@ -8,6 +8,7 @@ import { Shell } from "@/components/shell";
 import { Badge } from "@/components/ui/badge";
 import { currentUserId } from "@/auth";
 import { getDb } from "@/lib/db";
+import { visibilityNote } from "@/lib/bet-history";
 import { getGroupByCode, getPublicState, isGroupAdmin, listParties } from "@/lib/game";
 import { readGroupAdminToken, readToken } from "@/lib/session";
 
@@ -29,10 +30,10 @@ export default async function GroupPage({ params }: { params: Promise<{ code: st
 
   const userId = await currentUserId();
   const token = userId ? null : await readToken(group.id);
-  const [parties, state, managing] = await Promise.all([
+  const managing = await isGroupAdmin(db, group.id, await readGroupAdminToken(group.id), userId);
+  const [parties, state] = await Promise.all([
     listParties(db),
-    getPublicState(db, group.id, token, userId),
-    isGroupAdmin(db, group.id, await readGroupAdminToken(group.id), userId),
+    getPublicState(db, group.id, token, userId, managing),
   ]);
   const initial: Record<string, number> = {};
   for (const party of parties) {
@@ -46,6 +47,7 @@ export default async function GroupPage({ params }: { params: Promise<{ code: st
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">כנסת ה-{state.group.knessetNumber}</Badge>
           {state.group.locked ? <Badge>הניחושים נעולים</Badge> : <Badge variant="outline">פתוח עד הנעילה</Badge>}
+          <Badge variant="outline">{state.group.visibility === "open" ? "קבוצה פתוחה" : "קבוצה אנונימית"}</Badge>
         </div>
         <h1 className="font-heading text-5xl leading-none">{group.name}</h1>
         <LockCountdown
@@ -94,13 +96,20 @@ export default async function GroupPage({ params }: { params: Promise<{ code: st
             locked={state.group.locked}
             lockAt={state.group.lockAt}
             serverNow={serverNow}
+            policy={visibilityNote(state.group.visibility, state.group.revealBeforeLock)}
           />
         ) : state.group.locked ? (
           <p className="rounded-xl bg-card px-4 py-3 text-sm ring-1 ring-foreground/10">
             ההצטרפות נסגרה. הניחושים נעולים.
           </p>
         ) : userId ? (
-          <JoinForm code={group.code} lockAt={state.group.lockAt} locked={state.group.locked} serverNow={serverNow} />
+          <JoinForm
+            code={group.code}
+            lockAt={state.group.lockAt}
+            locked={state.group.locked}
+            serverNow={serverNow}
+            policy={visibilityNote(state.group.visibility, state.group.revealBeforeLock)}
+          />
         ) : (
           <div className="space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
             <p className="text-sm leading-relaxed">

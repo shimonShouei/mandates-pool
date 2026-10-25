@@ -30,6 +30,7 @@ import {
   saveManualResults,
   savePrediction,
   savePredictionForUser,
+  setBetVisibility,
   setPaidAliases,
   updateBloc,
   updateGroupAsAdmin,
@@ -197,6 +198,32 @@ export async function leaveGroup(formData: FormData): Promise<ActionResult> {
     }
     paths(group.code);
     return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function setVisibilityAction(formData: FormData): Promise<ActionResult> {
+  const code = String(formData.get("code") || "");
+  try {
+    const db = await getDb();
+    const group = await getGroupByCode(db, code);
+    if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
+    const admin = await requireGroupAdmin(group.id);
+    const visibility = String(formData.get("visibility") || "");
+    if (visibility !== "anonymous" && visibility !== "open") {
+      return { ok: false, error: "בחרו אנונימית או פתוחה." };
+    }
+    await setBetVisibility(
+      db,
+      group.id,
+      admin.token,
+      admin.userId,
+      { visibility, revealBeforeLock: formData.get("revealBeforeLock") === "1" },
+      formData.get("confirmOpen") === "1",
+    );
+    paths(group.code);
+    return { ok: true, notice: "כלל החשיפה נשמר." };
   } catch (error) {
     return fail(error);
   }

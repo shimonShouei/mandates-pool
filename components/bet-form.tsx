@@ -22,6 +22,7 @@ export function BetForm({
   locked,
   lockAt,
   serverNow,
+  policy,
 }: {
   code: string;
   alias: string;
@@ -30,6 +31,7 @@ export function BetForm({
   locked: boolean;
   lockAt: string;
   serverNow: number;
+  policy: string;
 }) {
   const router = useRouter();
   const lock = useLocked(lockAt, locked, serverNow);
@@ -82,8 +84,9 @@ export function BetForm({
     >
       <input type="hidden" name="code" value={code} />
       <div className="flex items-end justify-between gap-3">
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="text-sm text-muted-foreground">הניחוש של {alias}</p>
+          <p className="mt-1 max-w-prose text-sm text-muted-foreground">{policy}</p>
           <h2 className="font-heading text-3xl leading-none">120 מנדטים</h2>
         </div>
         <p className={`font-heading text-4xl tabular-nums ${total === KNESSET_SEATS ? "text-primary" : "text-destructive"}`}>

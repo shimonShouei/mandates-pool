@@ -46,6 +46,10 @@ export async function migrateLegacySite(db: Db): Promise<void> {
   await addColumn(db, `ALTER TABLE participants ADD COLUMN paid INTEGER NOT NULL DEFAULT 0`);
   await addColumn(db, `ALTER TABLE participants ADD COLUMN user_id TEXT`);
   await addColumn(db, `ALTER TABLE groups ADD COLUMN owner_user_id TEXT`);
+  await addColumn(db, `ALTER TABLE groups ADD COLUMN bet_visibility TEXT NOT NULL DEFAULT 'anonymous'`);
+  await addColumn(db, `ALTER TABLE groups ADD COLUMN reveal_before_lock INTEGER NOT NULL DEFAULT 0`);
+  await db.run(`UPDATE groups SET bet_visibility = 'anonymous' WHERE bet_visibility IS NULL OR bet_visibility = ''`);
+  await db.run(`UPDATE groups SET reveal_before_lock = 0 WHERE reveal_before_lock IS NULL`);
   await db.run(`UPDATE groups SET payout_split = '100' WHERE payout_split IS NULL OR payout_split = ''`);
   await db.run(`UPDATE groups SET stake_agorot = 0 WHERE stake_agorot IS NULL`);
   await db.run(`UPDATE participants SET paid = 0 WHERE paid IS NULL`);
@@ -86,6 +90,8 @@ export async function migrateLegacySite(db: Db): Promise<void> {
   }
 
   const count = await db.get<{ c: number }>(`SELECT COUNT(*) AS c FROM parties`);
+  await backfillBetVersions(db);
+
   if (Number(count?.c ?? 0) === 0) {
     const now = new Date().toISOString();
     for (const [index, party] of SEED_PARTIES.entries()) {
@@ -94,6 +100,36 @@ export async function migrateLegacySite(db: Db): Promise<void> {
         [newId(), party.name, party.ballot, party.color, index, JSON.stringify(party.matchKeys), now],
       );
     }
+  }
+}
+
+/** One starting version for bets saved before history existed. */
+export async function backfillBetVersions(db: Db): Promise<void> {
+  const people = await db.all<{ id: string; group_id: string }>(`SELECT id, group_id FROM participants`);
+  for (const person of people) {
+    const existing = await db.get<{ id: string }>(
+      `SELECT id FROM bet_versions WHERE participant_id = ? LIMIT 1`,
+      [person.id],
+    );
+    if (existing) continue;
+    const rows = await db.all<{ party_id: string; seats: number; updated_at: string }>(
+      `SELECT party_id, seats, updated_at FROM predictions WHERE participant_id = ?`,
+      [person.id],
+    );
+    if (rows.length === 0) continue;
+    const seats: Record<string, number> = {};
+    let savedAt = rows[0].updated_at;
+    for (const row of rows) {
+      seats[row.party_id] = Number(row.seats);
+      if (row.updated_at > savedAt) savedAt = row.updated_at;
+    }
+    await db.run(`INSERT INTO bet_versions (id, participant_id, group_id, saved_at, seats) VALUES (?, ?, ?, ?, ?)`, [
+      newId(),
+      person.id,
+      person.group_id,
+      savedAt,
+      JSON.stringify(seats),
+    ]);
   }
 }
 

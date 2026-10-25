@@ -1,7 +1,8 @@
+import { currentUserId } from "@/auth";
 import { getDb } from "@/lib/db";
-import { getGroupByCode, getPublicState } from "@/lib/game";
+import { getGroupByCode, getPublicState, isGroupAdmin } from "@/lib/game";
 import { privateCacheHeaders } from "@/lib/http-cache";
-import { readToken } from "@/lib/session";
+import { readGroupAdminToken, readToken } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +15,9 @@ export async function GET(_request: Request, context: { params: Promise<{ code: 
   if (!group) {
     return Response.json({ error: "not_found" }, { status: 404, headers: privateCacheHeaders() });
   }
-  const token = await readToken(group.id);
-  const state = await getPublicState(db, group.id, token);
+  const userId = await currentUserId();
+  const token = userId ? null : await readToken(group.id);
+  const admin = await isGroupAdmin(db, group.id, await readGroupAdminToken(group.id), userId);
+  const state = await getPublicState(db, group.id, token, userId, admin);
   return Response.json(state, { headers: privateCacheHeaders() });
 }

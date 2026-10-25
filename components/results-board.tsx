@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { BetRoster, OwnHistory } from "@/components/bet-roster";
 import { formatIls, formatNumber, formatPercent, formatScore, formatSigned, formatWhen } from "@/lib/format";
 import { splitLabel, STAKE_NOTE } from "@/lib/payout";
 import type { GroupStanding, OwnView, PublicGroupState, PublicStandingsPayload } from "@/lib/public-state";
@@ -132,9 +133,7 @@ export function ResultsBoard({ code, initial }: { code: string; initial: PublicG
           )}
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">
-          הדירוג יופיע ברגע שתתפרסם חלוקת מנדטים. עד אז אף אחד לא רואה את הניחוש של האחרים, וגם אחר כך רואים רק כינוי וציון.
-        </p>
+        <p className="text-sm text-muted-foreground">{privacyNote(state)}</p>
       )}
 
       {state.stake ? (
@@ -206,8 +205,23 @@ export function ResultsBoard({ code, initial }: { code: string; initial: PublicG
       {state.aliases.length > 0 ? (
         <p className="text-sm text-muted-foreground">במשחק: {state.aliases.join(", ")}</p>
       ) : null}
+
+      {state.revealed ? <BetRoster people={state.revealed} /> : null}
+      {state.own && !state.revealed ? <OwnHistory alias={state.own.alias} history={state.own.history} /> : null}
     </section>
   );
+}
+
+function privacyNote(state: PublicGroupState): string {
+  if (state.group.visibility === "open" && state.group.revealBeforeLock) {
+    return "הקבוצה פתוחה. חברי הקבוצה רואים את הניחוש המלא גם לפני הנעילה. הדירוג הארצי נשאר בלי חלוקת המושבים.";
+  }
+  if (state.group.visibility === "open") {
+    return state.group.locked
+      ? "הקבוצה פתוחה. חברי הקבוצה רואים את הניחוש המלא. הדירוג הארצי נשאר בלי חלוקת המושבים."
+      : "הקבוצה פתוחה. אחרי הנעילה חברי הקבוצה יראו את הניחוש המלא. עד אז רואים כינוי וציון.";
+  }
+  return "הקבוצה אנונימית. גם אחרי התוצאות רואים כינוי וציון, לא את חלוקת המושבים.";
 }
 
 function mergePublic(current: PublicGroupState, next: PublicStandingsPayload): PublicGroupState {

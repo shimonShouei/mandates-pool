@@ -7,6 +7,8 @@ import { ensureFreshSite } from "@/lib/refresh";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/** Public aggregate board. A person's seat vector is never included, even when the group is open. */
+
 export async function GET(_request: Request, context: { params: Promise<{ code: string }> }) {
   const { code } = await context.params;
   const db = await getDb();
