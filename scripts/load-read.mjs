@@ -25,7 +25,7 @@ for (const path of paths) {
   const codes = result.statusCodeStats || {};
   const errors = (result.errors || 0) + (result.timeouts || 0) + (result.non2xx || 0);
   console.log(
-    `${path}  requests=${result.requests.total}  p95=${result.latency.p97_5}ms  non2xx=${result.non2xx}  codes=${JSON.stringify(codes)}`,
+    `${path}  requests=${result.requests.total}  p97.5=${result.latency.p97_5}ms  non2xx=${result.non2xx}  codes=${JSON.stringify(codes)}`,
   );
   if (errors > 0) failed += 1;
 }

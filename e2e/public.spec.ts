@@ -28,7 +28,7 @@ test("public pages, a missing page, robots, and the share image", async ({ page 
   const meta = seedMeta();
   await page.goto("/board");
   await expect(page.getByRole("heading", { name: "הדירוג הארצי" })).toBeVisible();
-  await expect(page.getByText(meta.alias)).toBeVisible();
+  await expect(page.getByRole("listitem").getByText(meta.alias)).toBeVisible();
   await expect(page.locator("svg[onload]")).toHaveCount(0);
 
   await page.goto("/crowd");
