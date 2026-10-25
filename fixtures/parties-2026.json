@@ -1,0 +1,491 @@
+{
+  "_about": "26th Knesset election, 27 Oct 2026. CEC approved 38 lists on 27 Sep 2026; Blue and White (כן) and Achi (צבי) withdrew, so 36 lists are on the ballot. 'parties' uses the repo's SeedParty shape (lib/parties.ts: name, ballot, color, matchKeys) and holds the competitive core; extra fields are metadata. 'surplusAgreements' uses the SurplusAgreement shape {a,b} from lib/results/bader-ofer.ts keyed by ballot letters (the DB stores party ids; map by ballot when entering in /admin). Researched 25 Oct 2026.",
+  "parties": [
+    {
+      "name": "הליכוד",
+      "ballot": "מחל",
+      "color": "#1d4e89",
+      "matchKeys": [
+        "הליכוד בהנהגת בנימין נתניהו"
+      ],
+      "fullName": "הליכוד בהנהגת בנימין נתניהו לראשות הממשלה",
+      "englishName": "Likud",
+      "competitive": "above",
+      "pollAvgSeats": 22
+    },
+    {
+      "name": "ישר!",
+      "ballot": "דרך",
+      "color": "#1e3a5f",
+      "matchKeys": [
+        "ישר",
+        "ישר! עם איזנקוט"
+      ],
+      "fullName": "ישר! עם איזנקוט לראשות הממשלה מאחדים את ישראל",
+      "englishName": "Yashar! (Eisenkot)",
+      "competitive": "above",
+      "pollAvgSeats": 22
+    },
+    {
+      "name": "ביחד",
+      "ballot": "רק",
+      "color": "#0f766e",
+      "matchKeys": [
+        "ביחד בראשות נפתלי בנט"
+      ],
+      "fullName": "ביחד בראשות נפתלי בנט",
+      "englishName": "Together / Beyachad (Bennett)",
+      "competitive": "above",
+      "pollAvgSeats": 13
+    },
+    {
+      "name": "הרשימה המשותפת",
+      "ballot": "ודם",
+      "color": "#9f1239",
+      "matchKeys": [
+        "ודם",
+        "הרשימה המשותפת",
+        "חד\"ש תע\"ל"
+      ],
+      "fullName": "הרשימה המשותפת",
+      "englishName": "Joint List (Hadash–Ta'al–Balad)",
+      "competitive": "above",
+      "pollAvgSeats": 9
+    },
+    {
+      "name": "הדמוקרטים",
+      "ballot": "אמת",
+      "color": "#b42318",
+      "matchKeys": [
+        "הדמוקרטים בראשות יאיר גולן"
+      ],
+      "fullName": "הדמוקרטים בראשות יאיר גולן",
+      "englishName": "The Democrats (Golan)",
+      "competitive": "above",
+      "pollAvgSeats": 9
+    },
+    {
+      "name": "עוצמה יהודית",
+      "ballot": "ב",
+      "color": "#a16207",
+      "matchKeys": [
+        "עוצמה יהודית בראשות איתמר בן גביר"
+      ],
+      "fullName": "עוצמה יהודית בראשות איתמר בן גביר",
+      "englishName": "Otzma Yehudit (Ben-Gvir)",
+      "competitive": "above",
+      "pollAvgSeats": 8
+    },
+    {
+      "name": "ש\"ס",
+      "ballot": "שס",
+      "color": "#1e3a8a",
+      "matchKeys": [
+        "שס",
+        "התאחדות הספרדים"
+      ],
+      "fullName": "התאחדות הספרדים שומרי תורה תנועתו של מרן הרב עובדיה יוסף זצ\"ל",
+      "englishName": "Shas",
+      "competitive": "above",
+      "pollAvgSeats": 8
+    },
+    {
+      "name": "יהדות התורה",
+      "ballot": "ג",
+      "color": "#292524",
+      "matchKeys": [
+        "יהדות התורה והשבת"
+      ],
+      "fullName": "יהדות התורה והשבת אגודת ישראל – דגל התורה",
+      "englishName": "United Torah Judaism",
+      "competitive": "above",
+      "pollAvgSeats": 8
+    },
+    {
+      "name": "ישראל ביתנו",
+      "ballot": "ל",
+      "color": "#0369a1",
+      "matchKeys": [
+        "ישראל ביתנו בראשות אביגדור ליברמן"
+      ],
+      "fullName": "ישראל ביתנו בראשות אביגדור ליברמן",
+      "englishName": "Yisrael Beiteinu (Liberman)",
+      "competitive": "above",
+      "pollAvgSeats": 8
+    },
+    {
+      "name": "הציונות הדתית וזהות",
+      "ballot": "ט",
+      "color": "#c2410c",
+      "matchKeys": [
+        "הציונות הדתית",
+        "זהות"
+      ],
+      "fullName": "הציונות הדתית בראשות בצלאל סמוטריץ' וזהות בראשות משה פייגלין",
+      "englishName": "Religious Zionism–Zehut (Smotrich, Feiglin)",
+      "competitive": "above",
+      "pollAvgSeats": 7
+    },
+    {
+      "name": "רע\"ם",
+      "ballot": "עם",
+      "color": "#15803d",
+      "matchKeys": [
+        "רעם",
+        "הרשימה הערבית המאוחדת"
+      ],
+      "fullName": "רע\"ם – הרשימה הערבית המאוחדת",
+      "englishName": "Ra'am – United Arab List",
+      "competitive": "above",
+      "pollAvgSeats": 6
+    },
+    {
+      "name": "עמך ישראל",
+      "ballot": "ך",
+      "color": "#92400e",
+      "matchKeys": [
+        "עמך ישראל בראשות עופר וינטר"
+      ],
+      "fullName": "עמך ישראל בראשות עופר וינטר",
+      "englishName": "Amcha Yisrael (Ofer Winter)",
+      "competitive": "near",
+      "pollAvgSeats": null
+    },
+    {
+      "name": "המילואימניקים",
+      "ballot": "די",
+      "color": "#6d28d9",
+      "matchKeys": [
+        "המילואימניקים והכלכלית"
+      ],
+      "fullName": "המילואימניקים והכלכלית בראשות יועז הנדל וירון זליכה",
+      "englishName": "The Reservists & the Economic Party (Hendel, Zelekha)",
+      "competitive": "near",
+      "pollAvgSeats": null
+    }
+  ],
+  "minorLists": [
+    {
+      "name": "מפלגת ביחד נצליח – רשימה משותפת ערבית יהודית בראשות אבי שקד",
+      "ballot": "בד",
+      "color": "#6b7280",
+      "matchKeys": [
+        "מפלגת ביחד נצליח – רשימה משותפת ערבית יהודית בראשות אבי שקד"
+      ],
+      "fullName": "מפלגת ביחד נצליח – רשימה משותפת ערבית יהודית בראשות אבי שקד",
+      "englishName": "Together We'll Succeed – Arab-Jewish joint list (Avi Shaked)",
+      "competitive": "minor"
+    },
+    {
+      "name": "צומת בית ישראל",
+      "ballot": "בי",
+      "color": "#6b7280",
+      "matchKeys": [
+        "צומת בית ישראל"
+      ],
+      "fullName": "צומת בית ישראל",
+      "englishName": "Tzomet Beit Yisrael",
+      "competitive": "minor"
+    },
+    {
+      "name": "אורות השחר בראשות ניסים לוק",
+      "ballot": "בקר",
+      "color": "#6b7280",
+      "matchKeys": [
+        "אורות השחר בראשות ניסים לוק"
+      ],
+      "fullName": "אורות השחר בראשות ניסים לוק",
+      "englishName": "Orot HaShahar (Nissim Lok)",
+      "competitive": "minor"
+    },
+    {
+      "name": "השותפות לכולם",
+      "ballot": "ד",
+      "color": "#6b7280",
+      "matchKeys": [
+        "השותפות לכולם"
+      ],
+      "fullName": "השותפות לכולם",
+      "englishName": "Partnership for All",
+      "competitive": "minor"
+    },
+    {
+      "name": "גן עדן בראשות ישוע ישראל בן דוד",
+      "ballot": "ה",
+      "color": "#6b7280",
+      "matchKeys": [
+        "גן עדן בראשות ישוע ישראל בן דוד"
+      ],
+      "fullName": "גן עדן בראשות ישוע ישראל בן דוד",
+      "englishName": "Gan Eden (Yeshua Yisrael Ben David)",
+      "competitive": "minor"
+    },
+    {
+      "name": "בטח – בטחון חברתי בראשות סמיון גרפמן",
+      "ballot": "ז",
+      "color": "#6b7280",
+      "matchKeys": [
+        "בטח – בטחון חברתי בראשות סמיון גרפמן"
+      ],
+      "fullName": "בטח – בטחון חברתי בראשות סמיון גרפמן",
+      "englishName": "Betach – Social Security (Semion Grafman)",
+      "competitive": "minor"
+    },
+    {
+      "name": "הציבור החרדי בראשות מוטי ליטנר",
+      "ballot": "זך",
+      "color": "#6b7280",
+      "matchKeys": [
+        "הציבור החרדי בראשות מוטי ליטנר"
+      ],
+      "fullName": "הציבור החרדי בראשות מוטי ליטנר",
+      "englishName": "The Haredi Public (Moti Litner)",
+      "competitive": "minor"
+    },
+    {
+      "name": "ברית עולם לגאולת ישראל",
+      "ballot": "זץ",
+      "color": "#6b7280",
+      "matchKeys": [
+        "ברית עולם לגאולת ישראל"
+      ],
+      "fullName": "ברית עולם לגאולת ישראל",
+      "englishName": "Brit Olam for the Redemption of Israel",
+      "competitive": "minor"
+    },
+    {
+      "name": "ישראל תחילה בראשות שרן השכל",
+      "ballot": "י",
+      "color": "#6b7280",
+      "matchKeys": [
+        "ישראל תחילה בראשות שרן השכל"
+      ],
+      "fullName": "ישראל תחילה בראשות שרן השכל",
+      "englishName": "Israel First (Sharren Haskel)",
+      "competitive": "minor"
+    },
+    {
+      "name": "גה\"ת – גוש התנ\"כי",
+      "ballot": "יק",
+      "color": "#6b7280",
+      "matchKeys": [
+        "גה\"ת – גוש התנ\"כי"
+      ],
+      "fullName": "גה\"ת – גוש התנ\"כי",
+      "englishName": "GaHat – The Biblical Bloc",
+      "competitive": "minor"
+    },
+    {
+      "name": "נעם לישראל למען עתיד הילדים בראשות אבי מעוז",
+      "ballot": "ני",
+      "color": "#6b7280",
+      "matchKeys": [
+        "נעם לישראל למען עתיד הילדים בראשות אבי מעוז"
+      ],
+      "fullName": "נעם לישראל למען עתיד הילדים בראשות אבי מעוז",
+      "englishName": "Noam for Israel (Avi Maoz)",
+      "competitive": "minor"
+    },
+    {
+      "name": "שמע בראשות נפתלי גולדמן",
+      "ballot": "נף",
+      "color": "#6b7280",
+      "matchKeys": [
+        "שמע בראשות נפתלי גולדמן"
+      ],
+      "fullName": "שמע בראשות נפתלי גולדמן",
+      "englishName": "Shema (Naftali Goldman)",
+      "competitive": "minor"
+    },
+    {
+      "name": "ביטחון אישי",
+      "ballot": "נץ",
+      "color": "#6b7280",
+      "matchKeys": [
+        "ביטחון אישי"
+      ],
+      "fullName": "ביטחון אישי",
+      "englishName": "Personal Security",
+      "competitive": "minor"
+    },
+    {
+      "name": "התיקון לשיטת הבחירות והממשל",
+      "ballot": "נקי",
+      "color": "#6b7280",
+      "matchKeys": [
+        "התיקון לשיטת הבחירות והממשל"
+      ],
+      "fullName": "התיקון לשיטת הבחירות והממשל",
+      "englishName": "Reform of the Electoral and Government System",
+      "competitive": "minor"
+    },
+    {
+      "name": "צבע שחור – מגן עולם התורה",
+      "ballot": "נר",
+      "color": "#6b7280",
+      "matchKeys": [
+        "צבע שחור – מגן עולם התורה"
+      ],
+      "fullName": "צבע שחור – מגן עולם התורה",
+      "englishName": "Black Color – Shield of the Torah World",
+      "competitive": "minor"
+    },
+    {
+      "name": "אני ואתה מפלגת העם הישראלית",
+      "ballot": "פה",
+      "color": "#6b7280",
+      "matchKeys": [
+        "אני ואתה מפלגת העם הישראלית"
+      ],
+      "fullName": "אני ואתה מפלגת העם הישראלית",
+      "englishName": "Me and You – Israeli People's Party",
+      "competitive": "minor"
+    },
+    {
+      "name": "שרשר לאהבה ואחדות העם",
+      "ballot": "צדק",
+      "color": "#6b7280",
+      "matchKeys": [
+        "שרשר לאהבה ואחדות העם"
+      ],
+      "fullName": "שרשר לאהבה ואחדות העם",
+      "englishName": "Sharshar – Love and Unity of the People",
+      "competitive": "minor"
+    },
+    {
+      "name": "הפיראטים – צפים לטוב",
+      "ballot": "צף",
+      "color": "#6b7280",
+      "matchKeys": [
+        "הפיראטים – צפים לטוב"
+      ],
+      "fullName": "הפיראטים – צפים לטוב",
+      "englishName": "The Pirates",
+      "competitive": "minor"
+    },
+    {
+      "name": "תקומה",
+      "ballot": "ק",
+      "color": "#6b7280",
+      "matchKeys": [
+        "תקומה"
+      ],
+      "fullName": "תקומה",
+      "englishName": "Tkuma",
+      "competitive": "minor"
+    },
+    {
+      "name": "קול הנשים",
+      "ballot": "קה",
+      "color": "#6b7280",
+      "matchKeys": [
+        "קול הנשים"
+      ],
+      "fullName": "קול הנשים",
+      "englishName": "Women's Voice",
+      "competitive": "minor"
+    },
+    {
+      "name": "סדר-חדש לכינון חוקה, להפרדת רשויות ולבחירות אישיות",
+      "ballot": "קך",
+      "color": "#6b7280",
+      "matchKeys": [
+        "סדר-חדש לכינון חוקה, להפרדת רשויות ולבחירות אישיות"
+      ],
+      "fullName": "סדר-חדש לכינון חוקה, להפרדת רשויות ולבחירות אישיות",
+      "englishName": "New Order – for a Constitution, Separation of Powers and Personal Elections",
+      "competitive": "minor"
+    },
+    {
+      "name": "משפט צדק",
+      "ballot": "קץ",
+      "color": "#6b7280",
+      "matchKeys": [
+        "משפט צדק"
+      ],
+      "fullName": "משפט צדק",
+      "englishName": "Just Judgment",
+      "competitive": "minor"
+    },
+    {
+      "name": "הקהל – מפלגה כלל חרדית שנציגיה נבחרים על ידי הציבור בראשות הרב שלמה אלבוים",
+      "ballot": "רץ",
+      "color": "#6b7280",
+      "matchKeys": [
+        "הקהל – מפלגה כלל חרדית שנציגיה נבחרים על ידי הציבור בראשות הרב שלמה אלבוים"
+      ],
+      "fullName": "הקהל – מפלגה כלל חרדית שנציגיה נבחרים על ידי הציבור בראשות הרב שלמה אלבוים",
+      "englishName": "HaKahal – all-Haredi party (Rabbi Shlomo Elboim)",
+      "competitive": "minor"
+    }
+  ],
+  "notRunning": [
+    {
+      "ballot": "כן",
+      "fullName": "כחול לבן בראשות בני גנץ",
+      "englishName": "Blue and White (Gantz)",
+      "note": "Withdrew 19 Oct 2026; all candidates resigned 21 Oct; CEC: votes for it are invalid."
+    },
+    {
+      "ballot": "צבי",
+      "fullName": "תנועת אחי תנועתו של הרב יורם אברג'ל זצ\"ל",
+      "englishName": "Achi",
+      "note": "Withdrew 23 Oct 2026; CEC confirmed 25 Oct; votes for it are invalid."
+    }
+  ],
+  "surplusAgreements": [
+    {
+      "a": "מחל",
+      "b": "ט",
+      "names": "הליכוד – הציונות הדתית וזהות",
+      "signed": "2026-10-06"
+    },
+    {
+      "a": "רק",
+      "b": "ל",
+      "names": "ביחד – ישראל ביתנו",
+      "signed": "2026-09-10"
+    },
+    {
+      "a": "דרך",
+      "b": "אמת",
+      "names": "ישר! – הדמוקרטים",
+      "signed": "2026-09-10"
+    },
+    {
+      "a": "שס",
+      "b": "ג",
+      "names": "ש\"ס – יהדות התורה",
+      "signed": "2026-10-11"
+    },
+    {
+      "a": "עם",
+      "b": "ודם",
+      "names": "רע\"ם – הרשימה המשותפת",
+      "signed": "between 10 Sep and 6 Oct 2026 (exact date not confirmed)"
+    }
+  ],
+  "withoutAgreement": [
+    "ב",
+    "ך",
+    "די"
+  ],
+  "sources": {
+    "cecLists": "https://www.gov.il/he/pages/candidates-lists-26",
+    "ballotLetters": [
+      "https://www.ynet.co.il/news/elections2026/article/sjmed8uqgx",
+      "https://www.kipa.co.il/%D7%97%D7%93%D7%A9%D7%95%D7%AA/1232376-0/"
+    ],
+    "supremeCourt": "https://www.globes.co.il/news/article.aspx?did=1001558307",
+    "blueWhite": "https://www.timesofisrael.com/liveblog_entry/blue-and-white-ballot-slips-to-be-removed-from-polling-stations-after-all-party-members-withdraw-from-election/",
+    "achi": "https://www.timesofisrael.com/liveblog_entry/election-committee-pulls-ballot-slips-of-fringe-haredi-party-achi-after-it-drops-out/",
+    "surplus": [
+      "https://www.kikar.co.il/political-news/surplus-agreements-elections-hendel-winter-ben-gvi",
+      "https://www.ynetnews.com/article/s1ql002sjge",
+      "https://www.jpost.com/israel-election-2026/article-908296",
+      "https://www.timesofisrael.com/liveblog_entry/shas-utj-sign-surplus-vote-agreement-ahead-of-election/",
+      "https://www.ynet.co.il/news/elections2026/article/skdhsmfsmx"
+    ],
+    "polls": "https://israel-polls-2026.pages.dev/"
+  }
+}

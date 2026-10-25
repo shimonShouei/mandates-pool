@@ -97,9 +97,11 @@ Auth.js (חבילת `next-auth`) עם שתי דרכים, בלי סיסמה שנ�
 
 ## רשימת המפלגות
 
-הזרע הוא הרשימות הגדולות **לכנסת ה-26**, לפי רשימת המועמדים שוועדת הבחירות פרסמה ועודכנה ב-22 באוקטובר 2026. אושרו 38 רשימות. כאן נזרעות הגדולות: הליכוד (מחל), ביחד (רק), ישר! (דרך), הדמוקרטים (אמת), ש"ס (שס), יהדות התורה (ג), עוצמה יהודית (ב), ישראל ביתנו (ל), הציונות הדתית וזהות (ט), רע"ם (עם), הרשימה המשותפת (ודם), המילואימניקים (די), עמך ישראל (ך).
+הזרע הוא 13 הרשימות שמתמודדות על מושבים **לכנסת ה-26**: הליכוד (מחל), ביחד (רק), ישר! (דרך), הדמוקרטים (אמת), ש"ס (שס), יהדות התורה (ג), עוצמה יהודית (ב), ישראל ביתנו (ל), הציונות הדתית וזהות (ט), רע"ם (עם), הרשימה המשותפת (ודם), המילואימניקים (די), עמך ישראל (ך). ועדת הבחירות אישרה 38 רשימות ב-27 בספטמבר 2026. כחול לבן (כן) ואחי (צבי) פרשו, ו-36 רצות. רע"ם והרשימה המשותפת אושרו סופית בבג"ץ ב-2 באוקטובר 2026.
 
-צריך לבדוק את הרשימה לפני הנעילה. רע"ם והרשימה המשותפת אושרו בספטמבר על תנאי. כחול לבן (כן) מסומנת באתר הרשמי כרשימה שאינה מתמודדת, ולכן היא לא בזרע. מנהל האתר מוסיף, מוחק ומשנה שמות ומאותיות. השינוי חל על כל הקבוצות.
+הניחוש הוא רק על 13 הרשימות האלה. 23 הרשימות הקטנות מוכרות למפרש התוצאות: הקולות שלהן נספרים לאחוז החסימה ולבאדר-עופר, ובדרך כלל הן מקבלות 0 מנדטים. אם אחת מהן עוברת את החסימה ומקבלת מושבים, הניחוש עליה נחשב 0 והדירוג ממשיך. רשימה שאינה מוכרת ועדיין מקבלת מושבים עוצרת את הדירוג עד שממפים אותה.
+
+חמישה הסכמי עודפים חתומים נטענים במיגרציה אם הם חסרים: מחל–ט, רק–ל, דרך–אמת, שס–ג, עם–ודם. מיגרציה חוזרת לא מוחקת נתונים ולא משכפלת הסכם. אחרי הטעינה הראשונה, מחיקה או שינוי של מנהל האתר נשמרים. מנהל האתר עדיין מוסיף, מוחק ומשנה שמות, אותיות והסכמים, והשינוי חל על כל הקבוצות.
 
 ## מאיפה מגיעות התוצאות
 
@@ -113,7 +115,7 @@ Auth.js (חבילת `next-auth`) עם שתי דרכים, בלי סיסמה שנ�
 
 המפרש נבדק מול `fixtures/votes25-national.html`: שחזור הטבלה הרשמית של 2022, 40 רשימות, 4,764,742 קולות כשרים. אם המקור החי חסום גם מורסל, המנהל שומר את דף התוצאות מהדפדפן ומעלה אותו, או מזין מנדטים ידנית. ההזנה הידנית תמיד עובדת, והיא עוצרת את הדריסה האוטומטית עד שלוחצים «ביטול העקיפה».
 
-מיפוי מהמקור אל הרשימות שלנו הוא לפי אותיות הפתק, ואחר כך לפי שם או מילות זיהוי שהמנהל מוסיף. רשימה שעברה את הסף ואין לה שורה אצלנו מופיעה באזהרה, והמושבים שלה עדיין נספרים בתוך ה-120.
+מיפוי מהמקור אל הרשימות הוא לפי אותיות הפתק, ואחר כך לפי שם או מילות זיהוי. רשימה קטנה מוכרת לא עוצרת את הדירוג. רשימה לא מוכרת שקיבלה מושבים מופיעה באזהרה, והדירוג מחכה עד שממפים אותה.
 
 ### באדר-עופר
 
@@ -124,7 +126,7 @@ Auth.js (חבילת `next-auth`) עם שתי דרכים, בלי סיסמה שנ�
 3. כל רשימה מקבלת `floor(קולות / מודד)` לבד.
 4. המנדטים שנשארו מחולקים אחד-אחד למי ש-`קולות / (מנדטים + 1)` הכי גבוה. הסכם עודפים מתחרה כזוג (סכום הקולות וסכום המושבים), והמושב שהזוג זוכה בו הולך לשותף עם המנה הגבוהה יותר. שותף מתחת לסף מבטל את ההסכם.
 
-ב-2022 נשארו 7 מנדטים אחרי השלב הראשון. עם ההסכמים שבתוקף (הליכוד–הציונות הדתית, יש עתיד–המחנה הממלכתי, ש"ס–יהדות התורה; העבודה–מרצ בטל כי מרצ נפלה) החישוב משחזר את כל 120 המושבים הרשמיים, כולל 32 לליכוד. בלי ההסכמים יוצא 31 לליכוד ו-5 לעבודה. לכן צריך להזין את הסכמי 2026 לפני ליל הבחירות. הם לא מופיעים בדף התוצאות.
+ב-2022 נשארו 7 מנדטים אחרי השלב הראשון. עם ההסכמים שבתוקף (הליכוד–הציונות הדתית, יש עתיד–המחנה הממלכתי, ש"ס–יהדות התורה; העבודה–מרצ בטל כי מרצ נפלה) החישוב משחזר את כל 120 המושבים הרשמיים, כולל 32 לליכוד. בלי ההסכמים יוצא 31 לליכוד ו-5 לעבודה. הסכמי 2026 החתומים נטענים עם המיגרציה: מחל–ט, רק–ל, דרך–אמת, שס–ג, עם–ודם. הם לא מופיעים בדף התוצאות, ומנהל האתר יכול לערוך אותם.
 
 שוויון במנה נשבר לטובת מי שיש לו יותר קולות, ואז לפי מזהה יציב. בחוק שוויון מלא מוכרע בהגרלה. זה לא השפיע על 2022.
 
@@ -207,7 +209,11 @@ An account can join several groups. Each group has one bet and one nickname. A l
 
 ## Parties
 
-The seed is the major lists for the **26th Knesset**, taken from the Central Elections Committee candidate list as updated on 22 October 2026. Thirty-eight lists were approved; only the competitive ones are seeded (Likud, Beyachad, Yashar!, The Democrats, Shas, United Torah Judaism, Otzma Yehudit, Yisrael Beiteinu, Religious Zionism–Zehut, Ra'am, the Joint List, the Miluimnikim list, and Amkha). Check them before locking. Ra'am and the Joint List were conditionally approved in September. Blue and White was marked as not running, so it is not seeded. The site admin can add, rename, and remove lists, and the change applies to every group. A list that already has guesses cannot be deleted.
+The seed is the 13 lists people bet on for the **26th Knesset**: Likud (מחל), Beyachad (רק), Yashar! (דרך), The Democrats (אמת), Shas (שס), United Torah Judaism (ג), Otzma Yehudit (ב), Yisrael Beiteinu (ל), Religious Zionism–Zehut (ט), Ra'am (עם), the Joint List (ודם), the Miluimnikim list (די), and Amkha (ך). The Central Elections Committee approved 38 lists on 27 September 2026. Blue and White (כן) and Achi (צבי) withdrew, so 36 lists are running. The Supreme Court cleared Ra'am and the Joint List on 2 October 2026.
+
+Bets stay on those 13 lists. Twenty-three minor lists are known to the results parser: their votes count toward the 3.25% threshold and toward Bader-Ofer, and they normally receive 0 seats. If one of them crosses the threshold and wins seats, every bet is scored as 0 for that list and the leaderboard keeps ranking. A list that is not in the catalog and still wins seats pauses ranking until it is mapped.
+
+Five signed surplus agreements are inserted by the migration when that ballot pair is missing: מחל–ט, רק–ל, דרך–אמת, שס–ג, עם–ודם. A later migration does not delete data and does not duplicate a pair. After that first seed, an admin deletion or edit is kept. The site admin can still add, rename, and remove lists and agreements, and the change applies to every group. A list that already has guesses cannot be deleted.
 
 ## Official results
 
@@ -221,7 +227,7 @@ Checked on 25 October 2026, two days before the 26th-Knesset election (27 Octobe
 
 The parser is tested against `fixtures/votes25-national.html`, a reconstruction of the official 2022 national table (40 lists, 4,764,742 valid votes) because the live host could not be downloaded through the WAF. If Vercel is blocked too, the admin uploads the HTML saved from a browser, or enters seats by hand. Manual entry always works and pauses automatic overwrite until "resume" is clicked.
 
-Lists are matched by ballot letters, then by name or admin match-keys. An unmapped list that wins seats is warned about and still counts inside the 120.
+Lists are matched by ballot letters, then by name or admin match-keys. A known minor list does not pause ranking. An unknown list that wins seats is warned about, and ranking waits until it is mapped.
 
 ### Bader-Ofer
 
@@ -232,7 +238,7 @@ Used when the page has votes but no usable mandate column, or when the admin for
 3. Each qualifying list gets `floor(votes / measure)` on its own.
 4. Remaining seats go one at a time to the highest `votes / (seats + 1)`. A surplus agreement competes as one pool; the seat it wins goes to the partner with the higher individual quotient. A partner below the threshold voids the agreement.
 
-For 2022 the first stage left 7 seats. With the agreements that were actually in force (Likud–Religious Zionism, Yesh Atid–National Unity, Shas–United Torah Judaism; Labor–Meretz void because Meretz missed the threshold) the allocator reproduces all official seat totals, including Likud 32. Without agreements Likud gets 31 and Labor 5. Enter the 2026 agreements before election night. They are not on the results page.
+For 2022 the first stage left 7 seats. With the agreements that were actually in force (Likud–Religious Zionism, Yesh Atid–National Unity, Shas–United Torah Judaism; Labor–Meretz void because Meretz missed the threshold) the allocator reproduces all official seat totals, including Likud 32. Without agreements Likud gets 31 and Labor 5. The signed 2026 agreements are loaded by the migration: מחל–ט, רק–ל, דרך–אמת, שס–ג, עם–ודם. They are not printed on the results page, and the site admin can edit them.
 
 Exact ties go to the list with more votes, then a stable id. The statute uses a lottery for a true tie. That did not affect 2022.
 

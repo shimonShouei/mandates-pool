@@ -1,6 +1,6 @@
 import type { Db } from "./db";
+import { seedElectionCatalog } from "./election-seed";
 import { newId } from "./ids";
-import { SEED_PARTIES } from "./parties";
 import { pollsOpenIso } from "./time";
 
 async function hasColumn(db: Db, table: string, column: string): Promise<boolean> {
@@ -89,18 +89,9 @@ export async function migrateLegacySite(db: Db): Promise<void> {
     );
   }
 
-  const count = await db.get<{ c: number }>(`SELECT COUNT(*) AS c FROM parties`);
+  await addColumn(db, `ALTER TABLE parties ADD COLUMN bettable INTEGER NOT NULL DEFAULT 1`);
   await backfillBetVersions(db);
-
-  if (Number(count?.c ?? 0) === 0) {
-    const now = new Date().toISOString();
-    for (const [index, party] of SEED_PARTIES.entries()) {
-      await db.run(
-        `INSERT INTO parties (id, name, ballot, color, sort_order, match_keys, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [newId(), party.name, party.ballot, party.color, index, JSON.stringify(party.matchKeys), now],
-      );
-    }
-  }
+  await seedElectionCatalog(db);
 }
 
 /** One starting version for bets saved before history existed. */

@@ -34,6 +34,8 @@ export type Party = {
   color: string;
   sortOrder: number;
   matchKeys: string[];
+  /** False for a minor list that is recognized in the results and is not on the bet slip. */
+  bettable: boolean;
 };
 
 export type Agreement = {
@@ -473,6 +475,10 @@ export async function deleteBloc(db: Db, blocId: string) {
 }
 
 export async function listParties(db: Db): Promise<Party[]> {
+  return (await listCatalog(db)).filter((party) => party.bettable);
+}
+
+export async function listCatalog(db: Db): Promise<Party[]> {
   const rows = await db.all<{
     id: string;
     name: string;
@@ -480,7 +486,8 @@ export async function listParties(db: Db): Promise<Party[]> {
     color: string;
     sort_order: number;
     match_keys: string;
-  }>(`SELECT * FROM parties ORDER BY sort_order, name`);
+    bettable: number | null;
+  }>(`SELECT * FROM parties ORDER BY bettable DESC, sort_order, name`);
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
@@ -488,16 +495,17 @@ export async function listParties(db: Db): Promise<Party[]> {
     color: row.color,
     sortOrder: row.sort_order,
     matchKeys: parseKeys(row.match_keys),
+    bettable: Number(row.bettable) !== 0,
   }));
 }
 
 export async function addParty(db: Db, input: { name: string; ballot: string; color: string; matchKeys: string[] }) {
   const name = input.name.normalize("NFKC").replace(/\s+/g, " ").trim();
   if (name.length < 1 || name.length > 80) throw new GameError("שם הרשימה צריך להיות בין 1 ל-80 תווים.");
-  const parties = await listParties(db);
+  const parties = await listCatalog(db);
   const sort = parties.reduce((max, party) => Math.max(max, party.sortOrder), -1) + 1;
   await db.run(
-    `INSERT INTO parties (id, name, ballot, color, sort_order, match_keys, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO parties (id, name, ballot, color, sort_order, match_keys, bettable, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
     [newId(), name, input.ballot.trim(), cleanColor(input.color), sort, JSON.stringify(input.matchKeys), new Date().toISOString()],
   );
   await recomputeCurrent(db);
@@ -813,7 +821,7 @@ export async function applyParsedResults(
   },
 ) {
   const site = await getSite(db);
-  const parties = await listParties(db);
+  const parties = await listCatalog(db);
   const agreements = await listAgreements(db);
   const decision = decideSeats({
     parsed,
@@ -959,7 +967,10 @@ export async function recomputeCurrent(db: Db) {
 
 export type ScoreContext = {
   site: SiteSettings;
+  /** Lists on the bet slip. */
   parties: Party[];
+  /** Bet slip, plus a minor list that actually won seats. A guess of that list is 0. */
+  scoreParties: Party[];
   actual: Record<string, number>;
   results: PublicResults | null;
   scoreable: boolean;
@@ -967,14 +978,16 @@ export type ScoreContext = {
 
 export async function loadScoreContext(db: Db): Promise<ScoreContext> {
   const site = await getSite(db);
-  const parties = await listParties(db);
+  const catalog = await listCatalog(db);
+  const parties = catalog.filter((party) => party.bettable);
   const snapshot = await currentSnapshot(db);
   const resultRows = snapshot ? await snapshotRows(db, snapshot.id) : [];
   const actual: Record<string, number> = {};
-  for (const party of parties) actual[party.id] = 0;
+  for (const party of catalog) actual[party.id] = 0;
   for (const row of resultRows) {
     if (row.party_id) actual[row.party_id] = (actual[row.party_id] ?? 0) + Number(row.seats);
   }
+  const scoreParties = catalog.filter((party) => party.bettable || (actual[party.id] ?? 0) > 0);
   const scoreable = Boolean(snapshot && Number(snapshot.scoreable) === 1);
   const results: PublicResults | null = snapshot
     ? {
@@ -986,7 +999,7 @@ export async function loadScoreContext(db: Db): Promise<ScoreContext> {
         fetchedAt: snapshot.fetched_at,
         scoreable,
         note: snapshot.note,
-        parties: parties.map((party) => {
+        parties: scoreParties.map((party) => {
           const row = resultRows.find((item) => item.party_id === party.id);
           return {
             name: party.name,
@@ -1007,7 +1020,7 @@ export async function loadScoreContext(db: Db): Promise<ScoreContext> {
           })),
       }
     : null;
-  return { site, parties, actual, results, scoreable };
+  return { site, parties, scoreParties, actual, results, scoreable };
 }
 
 export async function getPublicState(

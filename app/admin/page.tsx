@@ -249,7 +249,7 @@ export default async function AdminPage() {
       <section className="mt-6 space-y-3">
         <h2 className="font-heading text-2xl">רשימות</h2>
         <p className="text-sm text-muted-foreground">
-          הרשימות משותפות לכל הקבוצות. נקודת הפתיחה היא הרשימות הגדולות לכנסת ה-26 לפי פרסום ועדת הבחירות מ-22 באוקטובר 2026. אי אפשר למחוק רשימה שכבר ניחשו עליה.
+          הרשימות בניחוש הן 13 הרשימות המתמודדות לכנסת ה-26. ועדת הבחירות אישרה 38 רשימות ב-27 בספטמבר 2026; כחול לבן (כן) ואחי (צבי) פרשו, ו-36 רצות. רע״ם והרשימה המשותפת אושרו בבג״ץ ב-2 באוקטובר 2026. הרשימות הקטנות מזוהות בתוצאות ולא מופיעות כאן. אי אפשר למחוק רשימה שכבר ניחשו עליה.
         </p>
         {parties.map((party, index) => (
           <div key={party.id} className="space-y-2 rounded-xl bg-card p-3 ring-1 ring-foreground/10">

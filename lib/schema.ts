@@ -33,6 +33,7 @@ export const SCHEMA_STATEMENTS = [
     color TEXT NOT NULL,
     sort_order INTEGER NOT NULL,
     match_keys TEXT NOT NULL DEFAULT '[]',
+    bettable INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS participants (
@@ -156,6 +157,10 @@ export const SCHEMA_STATEMENTS = [
     group_id TEXT NOT NULL,
     saved_at TEXT NOT NULL,
     seats TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS schema_seeds (
+    id TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS visibility_log (
     id TEXT PRIMARY KEY,

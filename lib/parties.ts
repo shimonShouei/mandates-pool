@@ -1,11 +1,16 @@
 /**
- * Major lists approved for the 26th Knesset, from the Central Elections
- * Committee list published on gov.il and updated 22 Oct 2026.
- * Forty lists were approved; this is only the competitive core.
- * Confirm the slate before locking bets — רע"ם and the Joint List were
- * still marked conditional in late September, and Blue and White (כן)
- * was listed as not running.
+ * 26th Knesset, 27 Oct 2026. The Central Elections Committee approved 38
+ * lists on 27 Sep 2026. Blue and White (כן) and Achi (צבי) withdrew, so 36
+ * lists are on the ballot. Ra'am (עם) and the Joint List (ודם) were cleared
+ * by the Supreme Court on 2 Oct 2026.
+ *
+ * Bets use the 13 competitive lists. The minor lists are known to the
+ * results parser only: their votes count toward the threshold, they normally
+ * take 0 seats, and a seat they do win is scored as a guess of 0.
+ * The research record is fixtures/parties-2026.json.
  */
+import catalog from "../fixtures/parties-2026.json";
+
 export type SeedParty = {
   name: string;
   ballot: string;
@@ -13,18 +18,46 @@ export type SeedParty = {
   matchKeys: string[];
 };
 
-export const SEED_PARTIES: SeedParty[] = [
-  { name: "הליכוד", ballot: "מחל", color: "#1d4e89", matchKeys: ["הליכוד בהנהגת בנימין נתניהו"] },
-  { name: "ביחד", ballot: "רק", color: "#0f766e", matchKeys: ["ביחד בראשות נפתלי בנט"] },
-  { name: "ישר!", ballot: "דרך", color: "#1e3a5f", matchKeys: ["ישר", "ישר! עם איזנקוט"] },
-  { name: "הדמוקרטים", ballot: "אמת", color: "#b42318", matchKeys: ["הדמוקרטים בראשות יאיר גולן"] },
-  { name: "ש\"ס", ballot: "שס", color: "#1e3a8a", matchKeys: ["שס", "התאחדות הספרדים"] },
-  { name: "יהדות התורה", ballot: "ג", color: "#292524", matchKeys: ["יהדות התורה והשבת"] },
-  { name: "עוצמה יהודית", ballot: "ב", color: "#a16207", matchKeys: ["עוצמה יהודית בראשות איתמר בן גביר"] },
-  { name: "ישראל ביתנו", ballot: "ל", color: "#0369a1", matchKeys: ["ישראל ביתנו בראשות אביגדור ליברמן"] },
-  { name: "הציונות הדתית וזהות", ballot: "ט", color: "#c2410c", matchKeys: ["הציונות הדתית", "זהות"] },
-  { name: "רע\"ם", ballot: "עם", color: "#15803d", matchKeys: ["רעם", "הרשימה הערבית המאוחדת"] },
-  { name: "הרשימה המשותפת", ballot: "ודם", color: "#9f1239", matchKeys: ["ודם", "חד\"ש תע\"ל"] },
-  { name: "המילואימניקים", ballot: "די", color: "#6d28d9", matchKeys: ["המילואימניקים והכלכלית"] },
-  { name: "עמך ישראל", ballot: "ך", color: "#92400e", matchKeys: ["עמך ישראל בראשות עופר וינטר"] },
-];
+type CatalogParty = {
+  name: string;
+  ballot: string;
+  color: string;
+  matchKeys: string[];
+  fullName?: string;
+};
+
+/** Keep the bet slip in this order. The homepage chips use the first rows. */
+const BET_BALLOTS = ["מחל", "רק", "דרך", "אמת", "שס", "ג", "ב", "ל", "ט", "עם", "ודם", "די", "ך"] as const;
+
+function toSeed(row: CatalogParty): SeedParty {
+  const matchKeys = [...row.matchKeys];
+  if (row.fullName && !matchKeys.includes(row.fullName)) matchKeys.push(row.fullName);
+  return { name: row.name, ballot: row.ballot, color: row.color, matchKeys };
+}
+
+function byBallot(ballot: string): CatalogParty {
+  const row = (catalog.parties as CatalogParty[]).find((party) => party.ballot === ballot);
+  if (!row) throw new Error(`2026 catalog is missing ballot ${ballot}`);
+  return row;
+}
+
+export const SEED_PARTIES: SeedParty[] = BET_BALLOTS.map((ballot) => toSeed(byBallot(ballot)));
+
+export const MINOR_LISTS: SeedParty[] = (catalog.minorLists as CatalogParty[]).map(toSeed);
+
+export const WITHDRAWN_LISTS: { ballot: string; name: string }[] = catalog.notRunning.map((list) => ({
+  ballot: list.ballot,
+  name: list.fullName,
+}));
+
+export const SEED_SURPLUS_AGREEMENTS: { a: string; b: string }[] = catalog.surplusAgreements.map((pair) => ({
+  a: pair.a,
+  b: pair.b,
+}));
+
+if (SEED_PARTIES.length !== 13 || MINOR_LISTS.length !== 23 || WITHDRAWN_LISTS.length !== 2) {
+  throw new Error("2026 catalog should be 13 competitive lists, 23 minor lists, and 2 withdrawals");
+}
+if (SEED_SURPLUS_AGREEMENTS.length !== 5) {
+  throw new Error("2026 catalog should carry the 5 signed surplus agreements");
+}

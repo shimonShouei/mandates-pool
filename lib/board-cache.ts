@@ -200,9 +200,10 @@ async function crowdLockKey(db: Db): Promise<string> {
 }
 
 async function computeAll(db: Db): Promise<{ global: StoredGlobal; groups: Map<string, StoredGroupBoard> }> {
-  const { site, parties, actual, results, scoreable } = await loadScoreContext(db);
-  const partyIds = parties.map((party) => party.id);
-  const partyMeta: PartyMeta[] = parties.map((party) => ({
+  const { site, parties, scoreParties, actual, results, scoreable } = await loadScoreContext(db);
+  const betPartyIds = parties.map((party) => party.id);
+  const scorePartyIds = scoreParties.map((party) => party.id);
+  const partyMeta: PartyMeta[] = scoreParties.map((party) => ({
     id: party.id,
     name: party.name,
     ballot: party.ballot,
@@ -259,11 +260,11 @@ async function computeAll(db: Db): Promise<{ global: StoredGlobal; groups: Map<s
     const members = byGroup.get(group.id) ?? [];
     const complete = members.filter((person) => {
       const predicted = byPerson.get(person.id) ?? {};
-      return checkSeatVector(partyIds.map((id) => predicted[id] ?? 0)).ok;
+      return checkSeatVector(betPartyIds.map((id) => predicted[id] ?? 0)).ok;
     });
     const internal = scoreable
       ? buildStandings(
-          partyIds,
+          scorePartyIds,
           actual,
           complete.map((person) => ({
             id: person.id,
@@ -283,7 +284,7 @@ async function computeAll(db: Db): Promise<{ global: StoredGlobal; groups: Map<s
     });
     const stake: GroupStake | null =
       buyInAgorot > 0 ? { buyInAgorot, potAgorot: payout.potAgorot, split } : null;
-    const vectors = complete.map((person) => partyIds.map((id) => byPerson.get(person.id)?.[id] ?? 0));
+    const vectors = complete.map((person) => betPartyIds.map((id) => byPerson.get(person.id)?.[id] ?? 0));
     const locked = betsLocked(group.election_start || pollsOpenIso(), group.deadline);
     const isPublic = Number(group.public_board) === 1;
     if (isPublic) {
@@ -292,7 +293,7 @@ async function computeAll(db: Db): Promise<{ global: StoredGlobal; groups: Map<s
       if (beforeLock || locked) siteVectors.push(...vectors);
     }
     const crowd = aggregateCrowd({
-      partyIds,
+      partyIds: betPartyIds,
       vectors,
       actual: actualMap,
       blocs,
@@ -312,7 +313,7 @@ async function computeAll(db: Db): Promise<{ global: StoredGlobal; groups: Map<s
       stake,
       thresholdBonus: weight,
       scoreable,
-      partyCount: partyIds.length,
+      partyCount: betPartyIds.length,
       knessetNumber: site.knessetNumber,
       actual,
       parties: partyMeta,
@@ -361,7 +362,7 @@ async function computeAll(db: Db): Promise<{ global: StoredGlobal; groups: Map<s
   });
 
   const siteCrowd = aggregateCrowd({
-    partyIds,
+    partyIds: betPartyIds,
     vectors: siteVectors,
     actual: actualMap,
     blocs,
@@ -370,7 +371,7 @@ async function computeAll(db: Db): Promise<{ global: StoredGlobal; groups: Map<s
   });
 
   return {
-    global: { scoreable, thresholdBonus: weight, partyCount: partyIds.length, rows, crowd: siteCrowd },
+    global: { scoreable, thresholdBonus: weight, partyCount: betPartyIds.length, rows, crowd: siteCrowd },
     groups,
   };
 }

@@ -1,3 +1,4 @@
+import { WITHDRAWN_LISTS } from "../parties";
 import { KNESSET_SEATS } from "../seats";
 import { allocateBaderOfer, type IgnoredAgreement } from "./bader-ofer";
 import type { ParsedList, ParsedResults } from "./parse-cec";
@@ -68,14 +69,25 @@ type Bucket = {
   officialSeats: number | null;
 };
 
+function isWithdrawn(list: Pick<ParsedList, "name" | "ballot">): boolean {
+  const ballot = normalizeMatchKey(list.ballot);
+  const name = normalizeMatchKey(list.name);
+  return WITHDRAWN_LISTS.some((item) => {
+    const itemBallot = normalizeMatchKey(item.ballot);
+    const itemName = normalizeMatchKey(item.name);
+    return (ballot !== "" && ballot === itemBallot) || (name !== "" && name === itemName);
+  });
+}
+
 export function decideSeats(input: {
   parsed: Pick<ParsedResults, "lists" | "validVotes">;
   parties: PartyRef[];
   agreements: { a: string; b: string }[];
   preferComputed: boolean;
 }): Decision {
+  const lists = input.parsed.lists.filter((list) => !isWithdrawn(list));
   const buckets = new Map<string, Bucket>();
-  input.parsed.lists.forEach((list, index) => {
+  lists.forEach((list, index) => {
     const party = matchParty(list, input.parties);
     const key = party ? `party:${party.id}` : `unmapped:${index}`;
     const existing = buckets.get(key);
