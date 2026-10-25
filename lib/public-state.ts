@@ -1,7 +1,13 @@
+import type { GroupStake } from "./payout";
 import type { PublicStanding } from "./scoring";
 import type { LockReason } from "./time";
 
 export type { PublicStanding };
+
+/** Group board row. Winnings are a display of the private settlement, never a payment. */
+export type GroupStanding = PublicStanding & {
+  winningsAgorot: number;
+};
 
 export type OfficialParty = {
   name: string;
@@ -74,7 +80,8 @@ export type PublicStandingsPayload = {
   aliases: string[];
   fetchProblem: string | null;
   results: PublicResults | null;
-  standings: PublicStanding[];
+  standings: GroupStanding[];
+  stake: GroupStake | null;
   thresholdBonus: number;
   partyCount: number;
   scoreable: boolean;
@@ -96,7 +103,8 @@ export type PublicGroupState = {
   aliases: string[];
   fetchProblem: string | null;
   results: PublicResults | null;
-  standings: PublicStanding[];
+  standings: GroupStanding[];
+  stake: GroupStake | null;
   own: OwnView | null;
   thresholdBonus: number;
   partyCount: number;
@@ -106,6 +114,7 @@ export type AdminParticipant = {
   alias: string;
   joinedAt: string;
   complete: boolean;
+  paid: boolean;
 };
 
 /** A public national-board row. No seat vector. */

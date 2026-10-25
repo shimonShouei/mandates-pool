@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { DonationLink } from "@/components/donation-link";
 import { NationalBoardLive } from "@/components/national-board";
 import { Shell } from "@/components/shell";
 import { getDb } from "@/lib/db";
@@ -21,7 +20,6 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
         <Link href="/scoring" className="text-primary underline-offset-4 hover:underline">
           איך מחשבים את הציון
         </Link>
-        <DonationLink className="text-muted-foreground" />
       </p>
       <NationalBoardLive initial={board} page={board.page} />
       <Pager page={board.page} pageCount={board.pageCount} />

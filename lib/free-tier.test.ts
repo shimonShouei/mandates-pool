@@ -1,32 +1,15 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createSqliteDb } from "./db";
-import { donationUrl } from "./donation";
 import { getSite, updateSite } from "./game";
 import { privateCacheHeaders, PUBLIC_CACHE_CONTROL, publicCacheHeaders } from "./http-cache";
 import { pooledNeonUrl } from "./neon-url";
 
 describe("free-tier helpers", () => {
-  const previousDonation = process.env.DONATION_URL;
   const previousDirect = process.env.DATABASE_DIRECT;
 
   afterEach(() => {
-    if (previousDonation == null) delete process.env.DONATION_URL;
-    else process.env.DONATION_URL = previousDonation;
     if (previousDirect == null) delete process.env.DATABASE_DIRECT;
     else process.env.DATABASE_DIRECT = previousDirect;
-  });
-
-  it("hides a donation link unless the env var is an http(s) url", () => {
-    delete process.env.DONATION_URL;
-    expect(donationUrl()).toBeNull();
-    process.env.DONATION_URL = "   ";
-    expect(donationUrl()).toBeNull();
-    process.env.DONATION_URL = "javascript:alert(1)";
-    expect(donationUrl()).toBeNull();
-    process.env.DONATION_URL = "not a url";
-    expect(donationUrl()).toBeNull();
-    process.env.DONATION_URL = "https://www.buymeacoffee.com/example";
-    expect(donationUrl()).toBe("https://www.buymeacoffee.com/example");
   });
 
   it("rewrites a Neon host onto the pooler and leaves other databases alone", () => {

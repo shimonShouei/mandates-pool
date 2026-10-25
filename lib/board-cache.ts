@@ -1,6 +1,7 @@
 import type { Db } from "./db";
 import { loadScoreContext } from "./game";
-import type { GlobalStanding, PublicResults, PublicStanding, PublicStandingsPayload } from "./public-state";
+import { computeWinnings, parseStoredSplit, type GroupStake } from "./payout";
+import type { GlobalStanding, GroupStanding, PublicResults, PublicStandingsPayload } from "./public-state";
 import { buildStandings, roundScore, toPublicStandings, type InternalStanding } from "./scoring";
 import { checkSeatVector } from "./seats";
 
@@ -15,7 +16,8 @@ export type StoredGroupBoard = {
   aliases: string[];
   fetchProblem: string | null;
   results: PublicResults | null;
-  standings: PublicStanding[];
+  standings: GroupStanding[];
+  stake: GroupStake | null;
   thresholdBonus: number;
   scoreable: boolean;
   partyCount: number;
@@ -54,7 +56,12 @@ export function publicGroupFields(board: StoredGroupBoard): PublicStandingsPaylo
     aliases: board.aliases,
     fetchProblem: board.fetchProblem,
     results: board.results,
-    standings: board.standings.map((row) => ({ ...row, isYou: false })),
+    standings: board.standings.map((row) => ({
+      ...row,
+      isYou: false,
+      winningsAgorot: row.winningsAgorot ?? 0,
+    })),
+    stake: board.stake ?? null,
     thresholdBonus: board.thresholdBonus,
     partyCount: board.partyCount,
     scoreable: board.scoreable,
@@ -140,6 +147,7 @@ async function boardKey(db: Db): Promise<string> {
     snap: string | null;
     preds: string | null;
     groups: string | null;
+    stake: string | null;
     people: string | number | null;
   }>(
     `SELECT
@@ -150,9 +158,11 @@ async function boardKey(db: Db): Promise<string> {
        (SELECT COALESCE(MAX(updated_at), '') || '|' || CAST(COUNT(*) AS TEXT) FROM predictions) AS preds,
        (SELECT CAST(COUNT(*) AS TEXT) || '|' || CAST(COALESCE(SUM(public_board), 0) AS TEXT) || '|' || CAST(COALESCE(SUM(LENGTH(name)), 0) AS TEXT)
           FROM groups) AS groups,
+       (SELECT CAST(COALESCE(SUM(stake_agorot), 0) AS TEXT) || '|' || CAST(COALESCE(SUM(LENGTH(payout_split)), 0) AS TEXT)
+          FROM groups) AS stake,
        (SELECT CAST(COUNT(*) AS TEXT) FROM participants) AS people`,
   );
-  return `${row?.rev ?? 0}|${row?.bonus ?? ""}|${row?.snap ?? ""}|${row?.preds ?? ""}|${row?.groups ?? ""}|${row?.people ?? 0}`;
+  return `stake|${row?.rev ?? 0}|${row?.bonus ?? ""}|${row?.snap ?? ""}|${row?.preds ?? ""}|${row?.groups ?? ""}|${row?.stake ?? ""}|${row?.people ?? 0}`;
 }
 
 async function computeAll(db: Db): Promise<{ global: StoredGlobal; groups: Map<string, StoredGroupBoard> }> {
@@ -165,9 +175,14 @@ async function computeAll(db: Db): Promise<{ global: StoredGlobal; groups: Map<s
     color: party.color,
   }));
   const weight = site.thresholdBonus;
-  const groupRows = await db.all<{ id: string; name: string; code: string; public_board: number }>(
-    `SELECT id, name, code, public_board FROM groups`,
-  );
+  const groupRows = await db.all<{
+    id: string;
+    name: string;
+    code: string;
+    public_board: number;
+    stake_agorot: number | null;
+    payout_split: string | null;
+  }>(`SELECT id, name, code, public_board, stake_agorot, payout_split FROM groups`);
   const people = await db.all<{ id: string; group_id: string; display_name: string }>(
     `SELECT id, group_id, display_name FROM participants ORDER BY created_at`,
   );
@@ -214,13 +229,27 @@ async function computeAll(db: Db): Promise<{ global: StoredGlobal; groups: Map<s
           weight,
         )
       : [];
+    const buyInAgorot = Number(group.stake_agorot) || 0;
+    const split = parseStoredSplit(group.payout_split);
+    const payout = computeWinnings({
+      buyInAgorot,
+      participantCount: members.length,
+      split,
+      finishers: internal.map((row) => ({ id: row.participantId, rank: row.rank })),
+    });
+    const stake: GroupStake | null =
+      buyInAgorot > 0 ? { buyInAgorot, potAgorot: payout.potAgorot, split } : null;
     groups.set(group.id, {
       participantCount: members.length,
       completeCount: complete.length,
       aliases: members.map((person) => person.display_name),
       fetchProblem: site.fetchError,
       results,
-      standings: toPublicStandings(internal),
+      standings: toPublicStandings(internal).map((row, index) => ({
+        ...row,
+        winningsAgorot: payout.byId.get(internal[index].participantId) ?? 0,
+      })),
+      stake,
       thresholdBonus: weight,
       scoreable,
       partyCount: partyIds.length,
@@ -284,6 +313,7 @@ function emptyGroup(): StoredGroupBoard {
     fetchProblem: null,
     results: null,
     standings: [],
+    stake: null,
     thresholdBonus: 0,
     scoreable: false,
     partyCount: 0,

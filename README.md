@@ -17,6 +17,8 @@
 
 על כל רשימה שניחשו נכון אם היא עוברת את אחוז החסימה מורידים משקל קטן. בניחוש, 4 ומעלה אומר «עוברת» ו-0 עד 3 אומר «לא». בתוצאה, כל מספר מושבים גדול מאפס אומר שהרשימה עברה. ברירת המחדל היא 0.25, ומנהל האתר יכול לשנות את המשקל או לשים 0 כדי לכבות את הבונוס. אותו ציון בקבוצה ובדירוג הארצי. הסבר בעברית פשוטה נמצא ב-`/scoring`. הפונקציות חיות ב-`lib/scoring.ts`.
 
+מנהל קבוצה יכול לקבוע השתתפות בשקלים וחלוקה (ברירת המחדל: המנצח לוקח הכל, או למשל 60/30/10). תיקו מחלק שווה בשווה את המקומות שהתיקו תופס. בדירוג הקבוצה מופיעים גודל הקופה והסכום שמגיע לכל אחד מהראשונים. זה תצוגה בלבד: האתר לא גובה, לא מחזיק ולא מעביר כסף, והחברים מסדרים את התשלום ביניהם. סימון מי שילם גלוי רק למנהל הקבוצה, ולא מופיע בדירוג הארצי.
+
 ## הרצה מקומית
 
 ```bash
@@ -44,7 +46,6 @@ npm run dev
 | `CRON_SECRET` | בפרודקשן | וורסל שולחת `Authorization: Bearer <CRON_SECRET>` אל הרענון היומי. |
 | `DATABASE_URL` | על ורסל | מחרוזת Postgres. כתובת Neon בלי `-pooler` מוחלפת אוטומטית ל-pooler. |
 | `DATABASE_DIRECT` | לא | `1` מבטל את ההחלפה ל-pooler. |
-| `DONATION_URL` | לא | קישור לפרגון, למשל Buy Me a Coffee, פייבוקס או ביט. בלי כתובת http או https הקישור לא מופיע. |
 | `RESULTS_SOURCE_URL` | לא | כתובת חלופית לדף התוצאות, אם רוצים לעקוף את ברירת המחדל. |
 | `SQLITE_PATH` | לא | נתיב לקובץ SQLite המקומי. |
 
@@ -55,7 +56,7 @@ SQLite לא נשמר על ורסל. צריך Postgres.
 1. צרו מסד ב-[Neon](https://neon.tech) במסלול החינמי. העתיקו מחרוזת חיבור עם `sslmode=require`. אפשר את הכתובת הרגילה: האפליקציה מוסיפה `-pooler` בעצמה, אלא אם `DATABASE_DIRECT=1`.
 2. דחפו את הריפו לגיטהאב, אם עוד אין שם ריפו.
 3. ב-[Vercel](https://vercel.com) בחרו Import Project, וחברו את הריפו. הפריימוורק מזוהה כ-Next.js. מסלול Hobby מספיק.
-4. הגדירו בסביבה של הפרויקט: `ADMIN_SECRET`, `CRON_SECRET`, `DATABASE_URL`. אם יש קישור פרגון, הוסיפו גם `DONATION_URL`.
+4. הגדירו בסביבה של הפרויקט: `ADMIN_SECRET`, `CRON_SECRET`, `DATABASE_URL`.
 5. פרסו. הכתובת תהיה מהצורה `https://<project>.vercel.app`.
 6. שלחו את `https://<project>.vercel.app`. כל אחד פותח קבוצה מדף הבית. `https://<project>.vercel.app/board` הוא הדירוג הארצי. `https://<project>.vercel.app/admin` מיועד רק למי שמחזיק ב-`ADMIN_SECRET`.
 
@@ -129,6 +130,8 @@ The primary score is the **sum of absolute seat errors**. A seat that moves from
 
 A small bonus is subtracted for each party whose pass or fail of the electoral threshold was called correctly. A guess of 4 or more means “passes”; 0–3 means “fails”. Any positive official seat total means the list passed. The default weight is 0.25. The site admin can change it, and 0 turns the bonus off. Group boards and the national board use the same score. A plain-Hebrew explanation is at `/scoring`. The functions live in `lib/scoring.ts`.
 
+A group admin can set a buy-in in shekels and a payout split (winner takes all by default, or for example 60/30/10). A tie splits the places it occupies evenly. The group board shows the pot and what each top finisher is due. That is display only: the site never collects, holds, or transfers money, and friends settle privately. A paid mark is visible only to the group admin and is not on the national board.
+
 ## Local
 
 ```bash
@@ -147,7 +150,7 @@ Install from Chrome or Edge with “Install app” / “Add to home screen”. O
 1. Create a Postgres database on the [Neon](https://neon.tech) free plan and copy a connection string with `sslmode=require`. A host without `-pooler` is rewritten to the pooler unless `DATABASE_DIRECT=1`.
 2. Push this repo to GitHub.
 3. Import it on [Vercel](https://vercel.com) as a Next.js app. The Hobby plan is enough.
-4. Set `ADMIN_SECRET`, `CRON_SECRET`, and `DATABASE_URL`. Add `DONATION_URL` only if you want a support link. SQLite will not persist on Vercel; the app refuses to boot there without `DATABASE_URL`.
+4. Set `ADMIN_SECRET`, `CRON_SECRET`, and `DATABASE_URL`. SQLite will not persist on Vercel; the app refuses to boot there without `DATABASE_URL`.
 5. Share `https://<project>.vercel.app`. People create their own groups there. `/board` is the national leaderboard. `/scoring` explains the score in Hebrew. `/admin` is only for the `ADMIN_SECRET` holder.
 
 ## Free tier on election night
@@ -162,8 +165,6 @@ The app is meant to run on Vercel Hobby and Neon’s free plan, without a freque
 - A person’s own bet is `GET /api/groups/[code]/me` with `private, no-store`. That route does not fetch the committee, and the page asks for it only when the results timestamp changes.
 - Neon uses `@neondatabase/serverless` with one connection per instance (`max: 1`) through the pooler, so the free plan’s direct-connection quota stays unused.
 - Expected capacity: dozens of groups and thousands of complete guesses are one in-memory pass. The test suite scores 120 guesses comfortably. The expensive step is the committee fetch, and that is limited to once every three minutes for the whole site. On election night most leaderboard reads are answered by the CDN and the stored snapshot.
-
-`DONATION_URL`, when set to an http or https link, shows a small “פרגון לקפה” link in the footer and on the leaderboard. Anything else stays hidden.
 
 ## Parties
 

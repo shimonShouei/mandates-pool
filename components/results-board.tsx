@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { formatNumber, formatPercent, formatScore, formatSigned, formatWhen } from "@/lib/format";
-import type { OwnView, PublicGroupState, PublicStanding, PublicStandingsPayload } from "@/lib/public-state";
+import { formatIls, formatNumber, formatPercent, formatScore, formatSigned, formatWhen } from "@/lib/format";
+import { splitLabel, STAKE_NOTE } from "@/lib/payout";
+import type { GroupStanding, OwnView, PublicGroupState, PublicStandingsPayload } from "@/lib/public-state";
 
 const METHOD: Record<string, string> = {
   "bader-ofer": "חלוקה: באדר-עופר לפי הקולות",
@@ -136,6 +137,15 @@ export function ResultsBoard({ code, initial }: { code: string; initial: PublicG
         </p>
       )}
 
+      {state.stake ? (
+        <div className="space-y-1 rounded-xl bg-card px-4 py-3 text-sm ring-1 ring-foreground/10">
+          <p>
+            קופה {formatIls(state.stake.potAgorot)} · {formatIls(state.stake.buyInAgorot)} למשתתף · {splitLabel(state.stake.split)}
+          </p>
+          <p className="text-muted-foreground">{STAKE_NOTE}</p>
+        </div>
+      ) : null}
+
       {results?.scoreable && standings.length > 0 ? (
         <div className="space-y-3">
           <p className="font-heading text-2xl">
@@ -153,7 +163,7 @@ export function ResultsBoard({ code, initial }: { code: string; initial: PublicG
           </p>
           <ol className="space-y-2">
             {standings.map((row) => (
-              <StandingRow key={row.alias} row={row} bonusOn={bonusOn} partyCount={state.partyCount} />
+              <StandingRow key={row.alias} row={row} bonusOn={bonusOn} partyCount={state.partyCount} showWinnings={state.stake != null} />
             ))}
           </ol>
         </div>
@@ -218,6 +228,7 @@ function mergePublic(current: PublicGroupState, next: PublicStandingsPayload): P
     standings,
     thresholdBonus: next.thresholdBonus,
     partyCount: next.partyCount,
+    stake: next.stake,
     own,
   };
 }
@@ -231,7 +242,17 @@ function applyOwn(current: PublicGroupState, own: OwnView | null): PublicGroupSt
   };
 }
 
-function StandingRow({ row, bonusOn, partyCount }: { row: PublicStanding; bonusOn: boolean; partyCount: number }) {
+function StandingRow({
+  row,
+  bonusOn,
+  partyCount,
+  showWinnings,
+}: {
+  row: GroupStanding;
+  bonusOn: boolean;
+  partyCount: number;
+  showWinnings: boolean;
+}) {
   return (
     <li
       className={`flex items-center justify-between gap-3 rounded-xl px-3 py-3 ring-1 ring-foreground/10 ${
@@ -249,6 +270,9 @@ function StandingRow({ row, bonusOn, partyCount }: { row: PublicStanding; bonusO
         <div className="font-medium">{formatScore(row.misplaced)}</div>
         <div className="text-xs text-muted-foreground">מושבים לא במקום</div>
         <div className="text-xs text-muted-foreground">סטיות {formatNumber(row.absolute)}</div>
+        {showWinnings && row.winningsAgorot > 0 ? (
+          <div className="text-xs text-muted-foreground">{formatIls(row.winningsAgorot)}</div>
+        ) : null}
         {bonusOn ? (
           <div className="text-xs text-muted-foreground">
             חסימה {formatNumber(row.thresholdCorrect)}/{formatNumber(partyCount)}

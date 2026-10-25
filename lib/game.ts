@@ -4,6 +4,7 @@ import { cleanDisplayName, hashToken, nameKey, newCode, newId, newToken } from "
 import type { AdminParticipant, OwnView, PublicGroupState, PublicResults } from "./public-state";
 import { decideSeats, type PartyRef } from "./results/decide";
 import type { ParsedList, ParsedResults } from "./results/parse-cec";
+import { parsePayoutSplit, parseStoredSplit } from "./payout";
 import { cleanThresholdBonus, roundScore, scoreGuess, DEFAULT_THRESHOLD_BONUS } from "./scoring";
 import { KNESSET_SEATS, checkSeatVector } from "./seats";
 import { betsLocked, isLocked, lockSchedule, pollsOpenIso } from "./time";
@@ -40,6 +41,8 @@ type GroupRow = {
   election_start: string | null;
   public_board: number;
   admin_token_hash: string | null;
+  stake_agorot: number | null;
+  payout_split: string | null;
   created_at: string;
 };
 
@@ -138,6 +141,8 @@ export async function updateGroup(
     deadline?: string | null;
     electionStart?: string;
     publicBoard?: boolean;
+    stakeAgorot?: number;
+    payoutSplit?: number[];
   },
 ) {
   const group = await mustGroup(db, groupId);
@@ -150,13 +155,30 @@ export async function updateGroup(
   if (name.length < 2 || name.length > 40) throw new GameError("שם הקבוצה צריך להיות בין 2 ל-40 תווים.");
   const electionStart = patch.electionStart ?? group.electionStart;
   if (Number.isNaN(Date.parse(electionStart))) throw new GameError("שעת פתיחת הקלפיות לא תקינה.");
+  let stakeAgorot = group.stakeAgorot;
+  if (patch.stakeAgorot != null) {
+    if (!Number.isInteger(patch.stakeAgorot) || patch.stakeAgorot < 0 || patch.stakeAgorot > 10_000_000) {
+      throw new GameError("סכום ההשתתפות צריך להיות בין 0 ל-100000 שקלים.");
+    }
+    stakeAgorot = patch.stakeAgorot;
+  }
+  let payoutSplit = group.payoutSplit;
+  if (patch.payoutSplit != null) {
+    try {
+      payoutSplit = parsePayoutSplit(patch.payoutSplit.join("/"));
+    } catch (error) {
+      throw new GameError(error instanceof Error ? error.message : "החלוקה לא תקינה.");
+    }
+  }
   await db.run(
-    `UPDATE groups SET name = ?, deadline = ?, election_start = ?, public_board = ? WHERE id = ?`,
+    `UPDATE groups SET name = ?, deadline = ?, election_start = ?, public_board = ?, stake_agorot = ?, payout_split = ? WHERE id = ?`,
     [
       name,
       patch.deadline === undefined ? group.deadline : patch.deadline,
       electionStart,
       patch.publicBoard == null ? (group.publicBoard ? 1 : 0) : patch.publicBoard ? 1 : 0,
+      stakeAgorot,
+      payoutSplit.join("/"),
       groupId,
     ],
   );
@@ -172,6 +194,8 @@ export async function updateGroupAsAdmin(
     deadline?: string | null;
     electionStart?: string;
     publicBoard?: boolean;
+    stakeAgorot?: number;
+    payoutSplit?: number[];
   },
 ) {
   if (!(await isGroupAdmin(db, groupId, token))) {
@@ -451,8 +475,8 @@ export async function deleteParticipation(db: Db, groupId: string, token: string
 }
 
 export async function listParticipantsAdmin(db: Db, groupId: string): Promise<AdminParticipant[]> {
-  const rows = await db.all<{ display_name: string; created_at: string; seat_sum: number | string }>(
-    `SELECT p.display_name, p.created_at,
+  const rows = await db.all<{ display_name: string; created_at: string; seat_sum: number | string; paid: number | null }>(
+    `SELECT p.display_name, p.created_at, p.paid,
             COALESCE((SELECT SUM(pr.seats) FROM predictions pr WHERE pr.participant_id = p.id), 0) AS seat_sum
      FROM participants p
      WHERE p.group_id = ?
@@ -463,7 +487,30 @@ export async function listParticipantsAdmin(db: Db, groupId: string): Promise<Ad
     alias: row.display_name,
     joinedAt: row.created_at,
     complete: Number(row.seat_sum) === KNESSET_SEATS,
+    paid: Number(row.paid) === 1,
   }));
+}
+
+/** Group admin only. The mark is never part of a public board. */
+export async function setPaidAliases(db: Db, groupId: string, token: string | null, aliases: string[]) {
+  if (!(await isGroupAdmin(db, groupId, token))) {
+    throw new GameError("נדרש קישור הניהול של הקבוצה.");
+  }
+  const people = await db.all<{ display_name: string }>(
+    `SELECT display_name FROM participants WHERE group_id = ?`,
+    [groupId],
+  );
+  const known = new Set(people.map((person) => person.display_name));
+  const wanted = [...new Set(aliases.map((alias) => alias.trim()).filter(Boolean))];
+  for (const alias of wanted) {
+    if (!known.has(alias)) throw new GameError("אין משתתף כזה בקבוצה.");
+  }
+  await db.transaction(async (tx) => {
+    await tx.run(`UPDATE participants SET paid = 0 WHERE group_id = ?`, [groupId]);
+    for (const alias of wanted) {
+      await tx.run(`UPDATE participants SET paid = 1 WHERE group_id = ? AND display_name = ?`, [groupId, alias]);
+    }
+  });
 }
 
 export async function applyParsedResults(
@@ -751,6 +798,7 @@ export async function getPublicState(db: Db, groupId: string, token: string | nu
     fetchProblem: board.fetchProblem,
     results: board.results,
     standings: board.standings.map((row) => ({ ...row, isYou: row.alias === you?.display_name })),
+    stake: board.stake,
     own,
     thresholdBonus: board.thresholdBonus,
     partyCount: board.partyCount,
@@ -862,6 +910,8 @@ export type Group = {
   deadline: string | null;
   electionStart: string;
   publicBoard: boolean;
+  stakeAgorot: number;
+  payoutSplit: number[];
   createdAt: string;
   hasAdminLink: boolean;
 };
@@ -874,6 +924,8 @@ function presentGroup(row: GroupRow): Group {
     deadline: row.deadline,
     electionStart: row.election_start || pollsOpenIso(),
     publicBoard: Number(row.public_board) === 1,
+    stakeAgorot: Number(row.stake_agorot) || 0,
+    payoutSplit: parseStoredSplit(row.payout_split),
     createdAt: row.created_at,
     hasAdminLink: Boolean(row.admin_token_hash),
   };

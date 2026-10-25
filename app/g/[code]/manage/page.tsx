@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { lockNow, updateGroupAction } from "@/app/actions";
+import { lockNow, markPaidAction, updateGroupAction } from "@/app/actions";
 import { ActionForm } from "@/components/action-form";
 import { ClaimAdmin } from "@/components/claim-admin";
 import { CopyCode } from "@/components/copy-code";
@@ -12,6 +12,7 @@ import { getDb } from "@/lib/db";
 import { formatWhen } from "@/lib/format";
 import { getGroupByCode, isGroupAdmin, listParticipantsAdmin } from "@/lib/game";
 import { readGroupAdminToken } from "@/lib/session";
+import { STAKE_NOTE } from "@/lib/payout";
 import { isoToJerusalemLocal, lockSchedule } from "@/lib/time";
 
 export default async function ManageGroupPage({
@@ -63,6 +64,9 @@ export default async function ManageGroupPage({
 
   const people = await listParticipantsAdmin(db, group.id);
   const schedule = lockSchedule(group.electionStart, group.deadline);
+  const splitText = group.payoutSplit.join("/");
+  const splitPreset = splitText === "100" || splitText === "60/30/10" ? splitText : "custom";
+  const stakeValue = group.stakeAgorot % 100 === 0 ? String(group.stakeAgorot / 100) : (group.stakeAgorot / 100).toFixed(2);
 
   return (
     <Shell>
@@ -136,6 +140,33 @@ export default async function ManageGroupPage({
             <input type="checkbox" name="publicBoard" value="1" defaultChecked={group.publicBoard} className="mt-1" />
             הקבוצה מופיעה בדירוג הארצי
           </label>
+          <div className="space-y-1.5">
+            <Label htmlFor="stake">השתתפות בשקלים, 0 בלי קופה</Label>
+            <Input id="stake" name="stakeIls" inputMode="decimal" defaultValue={stakeValue} className="h-11" />
+          </div>
+          <fieldset className="space-y-2 text-sm">
+            <legend className="font-medium">חלוקת הקופה</legend>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="splitPreset" value="100" defaultChecked={splitPreset === "100"} />
+              המנצח לוקח הכל
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="splitPreset" value="60/30/10" defaultChecked={splitPreset === "60/30/10"} />
+              60/30/10 לשלושת הראשונים
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="splitPreset" value="custom" defaultChecked={splitPreset === "custom"} />
+              אחרת
+            </label>
+            <Input
+              name="splitCustom"
+              defaultValue={splitPreset === "custom" ? splitText : ""}
+              placeholder="50/30/20"
+              className="h-11"
+            />
+            <p className="text-muted-foreground">אחוזים שלמים שסכומם 100. תיקו מחלק שווה בשווה את המקומות שהם תופסים.</p>
+          </fieldset>
+          <p className="text-sm text-muted-foreground">{STAKE_NOTE}</p>
           <Button type="submit" className="h-11">
             שמירה
           </Button>
@@ -150,19 +181,32 @@ export default async function ManageGroupPage({
 
       <section className="mt-6 space-y-2">
         <h2 className="font-heading text-2xl">משתתפים</h2>
-        <p className="text-sm text-muted-foreground">רואים מי נכנס ואם הניחוש שלו שלם. לא את המנדטים.</p>
+        <p className="text-sm text-muted-foreground">
+          רואים מי נכנס ואם הניחוש שלו שלם. לא את המנדטים. סימון התשלום גלוי רק כאן.
+        </p>
         {people.length === 0 ? <p className="text-sm">עוד אין משתתפים.</p> : null}
-        <ul className="divide-y divide-border rounded-xl bg-card ring-1 ring-foreground/10">
-          {people.map((person) => (
-            <li key={person.alias} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-              <span>
-                {person.alias}
-                <span className="block text-xs text-muted-foreground">{formatWhen(person.joinedAt)}</span>
-              </span>
-              <span>{person.complete ? "ניחוש שלם" : "עדיין לא 120"}</span>
-            </li>
-          ))}
-        </ul>
+        {people.length > 0 ? (
+          <ActionForm action={markPaidAction} className="space-y-3 rounded-xl bg-card p-3 ring-1 ring-foreground/10">
+            <input type="hidden" name="code" value={group.code} />
+            <ul className="divide-y divide-border">
+              {people.map((person) => (
+                <li key={person.alias} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <label className="flex min-w-0 items-center gap-2">
+                    <input type="checkbox" name="paid" value={person.alias} defaultChecked={person.paid} />
+                    <span className="truncate">
+                      {person.alias}
+                      <span className="block text-xs text-muted-foreground">{formatWhen(person.joinedAt)}</span>
+                    </span>
+                  </label>
+                  <span className="shrink-0 text-muted-foreground">{person.complete ? "ניחוש שלם" : "עדיין לא 120"}</span>
+                </li>
+              ))}
+            </ul>
+            <Button type="submit" variant="outline" className="h-11">
+              שמירת תשלומים
+            </Button>
+          </ActionForm>
+        ) : null}
       </section>
     </Shell>
   );

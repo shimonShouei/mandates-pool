@@ -95,7 +95,8 @@ describe("pool privacy and winner", () => {
     const adminRows = await listParticipantsAdmin(db, group.id);
     expect(adminRows).toHaveLength(3);
     for (const row of adminRows) {
-      expect(Object.keys(row).sort()).toEqual(["alias", "complete", "joinedAt"]);
+      expect(Object.keys(row).sort()).toEqual(["alias", "complete", "joinedAt", "paid"]);
+      expect(row.paid).toBe(false);
       expect(row.complete).toBe(true);
     }
     expect(JSON.stringify(adminRows.map((row) => ({ alias: row.alias, complete: row.complete })))).not.toContain("17");

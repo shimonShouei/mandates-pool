@@ -26,6 +26,16 @@ export function formatScore(value: number): string {
   return new Intl.NumberFormat("he-IL", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value);
 }
 
+export function formatIls(agorot: number): string {
+  const shekels = agorot / 100;
+  return new Intl.NumberFormat("he-IL", {
+    style: "currency",
+    currency: "ILS",
+    minimumFractionDigits: agorot % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(shekels);
+}
+
 export function formatSigned(value: number): string {
   if (value > 0) return `+${formatNumber(value)}`;
   return formatNumber(value);

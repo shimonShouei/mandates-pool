@@ -23,10 +23,12 @@ import {
   rotateGroupAdmin,
   saveManualResults,
   savePrediction,
+  setPaidAliases,
   updateGroupAsAdmin,
   updateParty,
   updateSite,
 } from "@/lib/game";
+import { parsePayoutSplit, parseStakeIls } from "@/lib/payout";
 import { parseCecPayload } from "@/lib/results/parse-cec";
 import { clientIp, createPublicGroup } from "@/lib/rate-limit";
 import { ensureFreshSite } from "@/lib/refresh";
@@ -198,12 +200,39 @@ export async function updateGroupAction(formData: FormData): Promise<ActionResul
     const electionRaw = String(formData.get("electionStart") || "");
     const electionStart = jerusalemLocalToIso(electionRaw);
     if (!electionStart) return { ok: false, error: "שעת פתיחת הקלפיות לא תקינה." };
+    let stakeAgorot = group.stakeAgorot;
+    let payoutSplit = group.payoutSplit;
+    try {
+      stakeAgorot = parseStakeIls(String(formData.get("stakeIls") ?? ""));
+      const preset = String(formData.get("splitPreset") || "100");
+      payoutSplit = parsePayoutSplit(preset === "custom" ? String(formData.get("splitCustom") || "") : preset);
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : "הקופה לא תקינה." };
+    }
     await updateGroupAsAdmin(db, group.id, token, {
       name: String(formData.get("name") || group.name),
       deadline,
       electionStart,
       publicBoard: formData.get("publicBoard") === "1",
+      stakeAgorot,
+      payoutSplit,
     });
+    paths(group.code);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function markPaidAction(formData: FormData): Promise<ActionResult> {
+  const code = String(formData.get("code") || "");
+  try {
+    const db = await getDb();
+    const group = await getGroupByCode(db, code);
+    if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
+    const token = await requireGroupAdmin(group.id);
+    const paid = formData.getAll("paid").map((value) => String(value));
+    await setPaidAliases(db, group.id, token, paid);
     paths(group.code);
     return { ok: true };
   } catch (error) {

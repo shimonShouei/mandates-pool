@@ -39,6 +39,12 @@ export async function migrateLegacySite(db: Db): Promise<void> {
   await db.run(`UPDATE groups SET public_board = 1 WHERE public_board IS NULL`);
   await addColumn(db, `ALTER TABLE site ADD COLUMN board_revision INTEGER NOT NULL DEFAULT 0`);
   await addColumn(db, `ALTER TABLE site ADD COLUMN threshold_bonus REAL NOT NULL DEFAULT 0.25`);
+  await addColumn(db, `ALTER TABLE groups ADD COLUMN stake_agorot INTEGER NOT NULL DEFAULT 0`);
+  await addColumn(db, `ALTER TABLE groups ADD COLUMN payout_split TEXT NOT NULL DEFAULT '100'`);
+  await addColumn(db, `ALTER TABLE participants ADD COLUMN paid INTEGER NOT NULL DEFAULT 0`);
+  await db.run(`UPDATE groups SET payout_split = '100' WHERE payout_split IS NULL OR payout_split = ''`);
+  await db.run(`UPDATE groups SET stake_agorot = 0 WHERE stake_agorot IS NULL`);
+  await db.run(`UPDATE participants SET paid = 0 WHERE paid IS NULL`);
 
   if (await hasColumn(db, "parties", "group_id")) {
     await hoistParties(db);

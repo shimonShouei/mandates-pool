@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { DonationLink } from "@/components/donation-link";
 
 export function Shell({
   children,
@@ -26,7 +25,6 @@ export function Shell({
           <Link href="/scoring" className="underline-offset-4 hover:underline">
             איך מחשבים את הציון
           </Link>
-          <DonationLink />
         </footer>
       </div>
     </div>
