@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createPublicGroupAction, goToCode } from "@/app/actions";
+import { currentUser } from "@/auth";
 import { ActionForm } from "@/components/action-form";
 import { InstallHint } from "@/components/pwa-register";
 import { Shell } from "@/components/shell";
@@ -7,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const user = await currentUser();
   return (
     <Shell>
       <header className="mt-8 space-y-3">
@@ -18,19 +20,31 @@ export default function HomePage() {
         </p>
       </header>
 
-      <ActionForm action={createPublicGroupAction} className="mt-8 space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
-        <h2 className="font-heading text-2xl">קבוצה חדשה</h2>
-        <div className="space-y-1.5">
-          <Label htmlFor="group-name">שם הקבוצה</Label>
-          <Input id="group-name" name="name" required minLength={2} maxLength={40} placeholder="למשל חברים מהעבודה" className="h-11" />
+      {user ? (
+        <ActionForm action={createPublicGroupAction} className="mt-8 space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+          <h2 className="font-heading text-2xl">קבוצה חדשה</h2>
+          <div className="space-y-1.5">
+            <Label htmlFor="group-name">שם הקבוצה</Label>
+            <Input id="group-name" name="name" required minLength={2} maxLength={40} placeholder="למשל חברים מהעבודה" className="h-11" />
+          </div>
+          <Button type="submit" className="h-11 w-full">
+            יצירת קבוצה
+          </Button>
+          <p className="text-sm text-muted-foreground">
+            החשבון הזה מנהל את הקבוצה. נוצר גם קישור גיבוי, לשמירה בצד.
+          </p>
+        </ActionForm>
+      ) : (
+        <div className="mt-8 space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+          <h2 className="font-heading text-2xl">קבוצה חדשה</h2>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            כדי לפתוח קבוצה נכנסים עם Google או עם קישור למייל. בלי סיסמה. הניחוש יישאר על החשבון, לא רק בדפדפן הזה.
+          </p>
+          <Link href="/signin?callbackUrl=/" className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-medium text-primary-foreground">
+            כניסה
+          </Link>
         </div>
-        <Button type="submit" className="h-11 w-full">
-          יצירת קבוצה
-        </Button>
-        <p className="text-sm text-muted-foreground">
-          מי שיוצר את הקבוצה מקבל קישור ניהול פרטי. אין צורך בסוד של האתר.
-        </p>
-      </ActionForm>
+      )}
 
       <form action={goToCode} className="mt-4 space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
         <div className="space-y-1.5">
@@ -65,8 +79,8 @@ export default function HomePage() {
       </p>
 
       <ol className="mt-8 space-y-4">
-        <Step n="1" title="נכנסים עם כינוי">
-          בלי סיסמה. הקישור והכינוי מספיקים, והדפדפן זוכר שזה הניחוש שלכם.
+        <Step n="1" title="נכנסים לחשבון, ובוחרים כינוי">
+          Google או קישור למייל, בלי סיסמה. הכינוי בכל קבוצה הוא מה שרואים בדירוג. המייל נשאר פרטי.
         </Step>
         <Step n="2" title="מחלקים בדיוק 120">
           מספר שלם לכל רשימה. 1 עד 3 מנדטים לא עוברים את אחוז החסימה, אז שם רושמים אפס או לפחות 4.

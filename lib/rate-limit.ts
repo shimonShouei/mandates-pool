@@ -16,7 +16,13 @@ export function clientIp(headerStore: { get(name: string): string | null }): str
   return "local";
 }
 
-export async function createPublicGroup(db: Db, name: string, ip: string, now = Date.now()) {
+export async function createPublicGroup(
+  db: Db,
+  name: string,
+  ip: string,
+  now = Date.now(),
+  ownerUserId: string | null = null,
+) {
   const ipHash = hashToken(ip || "local");
   const since = new Date(now - WINDOW_MS).toISOString();
   const row = await db.get<{ c: number | string }>(
@@ -26,7 +32,7 @@ export async function createPublicGroup(db: Db, name: string, ip: string, now = 
   if (Number(row?.c ?? 0) >= MAX_CREATES) {
     throw new GameError("יותר מדי קבוצות חדשות מהרשת הזו. נסו שוב בעוד שעה.");
   }
-  const group = await createGroup(db, name);
+  const group = await createGroup(db, name, null, null, ownerUserId);
   await db.run(`INSERT INTO creation_log (id, ip_hash, created_at) VALUES (?, ?, ?)`, [
     newId(),
     ipHash,

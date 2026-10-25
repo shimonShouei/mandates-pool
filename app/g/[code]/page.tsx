@@ -6,6 +6,7 @@ import { LockCountdown } from "@/components/lock-status";
 import { ResultsBoard } from "@/components/results-board";
 import { Shell } from "@/components/shell";
 import { Badge } from "@/components/ui/badge";
+import { currentUserId } from "@/auth";
 import { getDb } from "@/lib/db";
 import { getGroupByCode, getPublicState, isGroupAdmin, listParties } from "@/lib/game";
 import { readGroupAdminToken, readToken } from "@/lib/session";
@@ -26,11 +27,12 @@ export default async function GroupPage({ params }: { params: Promise<{ code: st
     );
   }
 
-  const token = await readToken(group.id);
+  const userId = await currentUserId();
+  const token = userId ? null : await readToken(group.id);
   const [parties, state, managing] = await Promise.all([
     listParties(db),
-    getPublicState(db, group.id, token),
-    isGroupAdmin(db, group.id, await readGroupAdminToken(group.id)),
+    getPublicState(db, group.id, token, userId),
+    isGroupAdmin(db, group.id, await readGroupAdminToken(group.id), userId),
   ]);
   const initial: Record<string, number> = {};
   for (const party of parties) {
@@ -69,6 +71,15 @@ export default async function GroupPage({ params }: { params: Promise<{ code: st
       </header>
 
       <div className="mt-6">
+        {state.own && !userId ? (
+          <p className="mb-3 rounded-xl bg-card px-4 py-3 text-sm leading-relaxed ring-1 ring-foreground/10">
+            הניחוש הזה שמור רק בדפדפן.{" "}
+            <Link href={`/signin?callbackUrl=/g/${group.code}`} className="text-primary underline-offset-4 hover:underline">
+              כניסה
+            </Link>{" "}
+            מצרפת אותו לחשבון, ואז הוא נפתח גם ממכשיר אחר.
+          </p>
+        ) : null}
         {state.own ? (
           <BetForm
             code={group.code}
@@ -88,8 +99,20 @@ export default async function GroupPage({ params }: { params: Promise<{ code: st
           <p className="rounded-xl bg-card px-4 py-3 text-sm ring-1 ring-foreground/10">
             ההצטרפות נסגרה. הניחושים נעולים.
           </p>
-        ) : (
+        ) : userId ? (
           <JoinForm code={group.code} lockAt={state.group.lockAt} locked={state.group.locked} serverNow={serverNow} />
+        ) : (
+          <div className="space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+            <p className="text-sm leading-relaxed">
+              כדי להצטרף נכנסים לחשבון. הכינוי נבחר כאן, והוא מה שמופיע בדירוג. המייל לא.
+            </p>
+            <Link
+              href={`/signin?callbackUrl=${encodeURIComponent(`/g/${group.code}`)}`}
+              className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-medium text-primary-foreground"
+            >
+              כניסה
+            </Link>
+          </div>
         )}
       </div>
 

@@ -1,12 +1,14 @@
 import Link from "next/link";
+import { currentUser } from "@/auth";
 
-export function Shell({
+export async function Shell({
   children,
   wide = false,
 }: {
   children: React.ReactNode;
   wide?: boolean;
 }) {
+  const user = await currentUser();
   return (
     <div className="min-h-dvh bg-[radial-gradient(ellipse_at_top,rgba(15,92,86,0.09),transparent_52%)]">
       <div className="h-1.5 bg-[#9c3b2e]" />
@@ -16,12 +18,15 @@ export function Shell({
           <Link href="/" className="text-sm font-medium tracking-wide text-primary">
             מנדטים
           </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
             <Link href="/crowd" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
               הקהל
             </Link>
             <Link href="/board" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
               הדירוג הארצי
+            </Link>
+            <Link href={user ? "/me" : "/signin"} className="text-sm text-muted-foreground underline-offset-4 hover:underline">
+              {user ? "הניחושים שלי" : "כניסה"}
             </Link>
           </div>
         </div>

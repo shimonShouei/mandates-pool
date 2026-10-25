@@ -169,7 +169,7 @@ export function BetForm({
         <p className="text-sm text-amber-900">אפשר לשמור גם עם האזהרה. החישוב הסופי לא ייתן 1–3 מנדטים.</p>
       ) : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      {saved ? <p className="text-sm text-primary">הניחוש נשמר במכשיר הזה.</p> : null}
+      {saved ? <p className="text-sm text-primary">הניחוש נשמר.</p> : null}
       {warnings.map((warning) => (
         <p key={warning} className="text-sm text-amber-900">
           {warning}
@@ -210,7 +210,7 @@ function Leave({ code, alias }: { code: string; alias: string }) {
         className="text-sm text-muted-foreground underline-offset-4 hover:underline disabled:opacity-50"
         disabled={pending}
         onClick={() => {
-          if (!window.confirm(`למחוק את הניחוש של ${alias} מהמכשיר הזה?`)) return;
+          if (!window.confirm(`למחוק את הניחוש של ${alias} מהקבוצה?`)) return;
           const formData = new FormData();
           formData.set("code", code);
           startTransition(async () => {

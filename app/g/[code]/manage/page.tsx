@@ -8,6 +8,7 @@ import { Shell } from "@/components/shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { currentUserId } from "@/auth";
 import { getDb } from "@/lib/db";
 import { formatWhen } from "@/lib/format";
 import { getGroupByCode, isGroupAdmin, listParticipantsAdmin } from "@/lib/game";
@@ -46,14 +47,15 @@ export default async function ManageGroupPage({
     );
   }
 
+  const userId = await currentUserId();
   const token = await readGroupAdminToken(group.id);
-  const allowed = await isGroupAdmin(db, group.id, token);
-  if (!allowed || !token) {
+  const allowed = await isGroupAdmin(db, group.id, token, userId);
+  if (!allowed) {
     return (
       <Shell>
         <h1 className="mt-8 font-heading text-4xl">ניהול {group.name}</h1>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          הדף הזה נפתח רק עם קישור הניהול הפרטי שנוצר עם הקבוצה. אם הקישור אבד, מנהל האתר יכול להנפיק אחד חדש.
+          הדף נפתח לחשבון שפתח את הקבוצה, או עם קישור הניהול הפרטי. אם הקישור אבד, מנהל האתר יכול להנפיק אחד חדש.
         </p>
         <Link href={`/g/${group.code}`} className="mt-4 inline-block text-primary underline-offset-4 hover:underline">
           לדף הקבוצה
@@ -82,17 +84,23 @@ export default async function ManageGroupPage({
       <h1 className="mt-2 font-heading text-5xl">ניהול {group.name}</h1>
       {query.welcome ? (
         <p className="mt-3 rounded-xl bg-card px-4 py-3 text-sm ring-1 ring-foreground/10">
-          הקבוצה נפתחה. שמרו את קישור הניהול. מי שיש לו אותו יכול לשנות את הקבוצה, ואין שחזור בלי מנהל האתר.
+          הקבוצה נפתחה על החשבון הזה. שמרו את קישור הגיבוי. הוא נשאר בתוקף גם בלי החשבון, ומנהל האתר יכול להנפיק חדש.
         </p>
       ) : null}
 
       <div className="mt-4 space-y-2">
         <CopyCode code={group.code} />
-        <CopyLink
-          label="קישור ניהול פרטי"
-          display={`/g/${group.code}/manage?k=••••`}
-          path={`/g/${group.code}/manage?k=${token}`}
-        />
+        {token ? (
+          <CopyLink
+            label="קישור ניהול לגיבוי"
+            display={`/g/${group.code}/manage?k=••••`}
+            path={`/g/${group.code}/manage?k=${token}`}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            החשבון הזה מנהל את הקבוצה. קישור הגיבוי הוצג פעם אחת, בדפדפן שבו הקבוצה נוצרה.
+          </p>
+        )}
       </div>
 
       <section className="mt-6 space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">

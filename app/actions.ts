@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { currentUserId } from "@/auth";
 import { safeEqual } from "@/lib/auth";
+import { claimDeviceIdentity } from "@/lib/claim-device";
 import { getDb } from "@/lib/db";
 import {
   GameError,
@@ -14,10 +16,12 @@ import {
   applyParsedResults,
   clearOverride,
   deleteParticipation,
+  deleteParticipationForUser,
   deleteParty,
   getGroupByCode,
   isGroupAdmin,
   joinGroup,
+  participantFromUser,
   listParties,
   markUploaded,
   moveParty,
@@ -25,6 +29,7 @@ import {
   rotateGroupAdmin,
   saveManualResults,
   savePrediction,
+  savePredictionForUser,
   setPaidAliases,
   updateBloc,
   updateGroupAsAdmin,
@@ -43,7 +48,6 @@ import {
   readToken,
   setAdminCookie,
   writeGroupAdminToken,
-  writeToken,
 } from "@/lib/session";
 import { jerusalemLocalToIso } from "@/lib/time";
 
@@ -74,10 +78,11 @@ async function requireAdmin() {
 async function requireGroupAdmin(groupId: string) {
   const db = await getDb();
   const token = await readGroupAdminToken(groupId);
-  if (!(await isGroupAdmin(db, groupId, token))) {
-    throw new GameError("נדרש קישור הניהול של הקבוצה.");
+  const userId = await currentUserId();
+  if (!(await isGroupAdmin(db, groupId, token, userId))) {
+    throw new GameError("נדרש החשבון שפתח את הקבוצה, או קישור הניהול.");
   }
-  return token;
+  return { token, userId };
 }
 
 function paths(code?: string) {
@@ -88,8 +93,9 @@ function paths(code?: string) {
   if (code) {
     revalidatePath(`/g/${code}`);
     revalidatePath(`/g/${code}/manage`);
-    revalidatePath(`/g/${code}/crowd`);
+      revalidatePath(`/g/${code}/crowd`);
   }
+  revalidatePath("/me");
 }
 
 export async function goToCode(formData: FormData) {
@@ -100,8 +106,16 @@ export async function goToCode(formData: FormData) {
 
 export async function createPublicGroupAction(formData: FormData): Promise<ActionResult> {
   try {
+    const userId = await currentUserId();
+    if (!userId) redirect("/signin?callbackUrl=/");
     const db = await getDb();
-    const group = await createPublicGroup(db, String(formData.get("name") || ""), clientIp(await headers()));
+    const group = await createPublicGroup(
+      db,
+      String(formData.get("name") || ""),
+      clientIp(await headers()),
+      Date.now(),
+      userId,
+    );
     await writeGroupAdminToken(group.id, group.adminToken);
     paths(group.code);
     redirect(`/g/${group.code}/manage?welcome=1`);
@@ -131,11 +145,14 @@ export async function joinAction(formData: FormData): Promise<ActionResult> {
   const code = String(formData.get("code") || "");
   const name = String(formData.get("name") || "");
   try {
+    const userId = await currentUserId();
+    if (!userId) return { ok: false, error: "נכנסים לחשבון לפני שמצטרפים לקבוצה." };
+    await claimDeviceIdentity();
     const db = await getDb();
     const group = await getGroupByCode(db, code);
     if (!group) return { ok: false, error: "לא מצאנו קבוצה עם הקוד הזה." };
-    const joined = await joinGroup(db, group.id, name);
-    await writeToken(group.id, joined.token);
+    const existing = await participantFromUser(db, group.id, userId);
+    if (!existing) await joinGroup(db, group.id, name, Date.now(), userId);
     paths(group.code);
     return { ok: true };
   } catch (error) {
@@ -147,12 +164,14 @@ export async function saveBet(formData: FormData): Promise<ActionResult> {
   const code = String(formData.get("code") || "");
   try {
     const raw = JSON.parse(String(formData.get("seats") || "{}")) as Record<string, unknown>;
+    await claimDeviceIdentity();
     const db = await getDb();
     const group = await getGroupByCode(db, code);
     if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
-    const token = await readToken(group.id);
-    if (!token) return { ok: false, error: "הדפדפן הזה עוד לא משויך לכינוי. הצטרפו מחדש." };
-    const saved = await savePrediction(db, group.id, token, raw);
+    const userId = await currentUserId();
+    const saved = userId
+      ? await savePredictionForUser(db, group.id, userId, raw)
+      : await savePrediction(db, group.id, (await readToken(group.id)) || "", raw);
     paths(group.code);
     return { ok: true, warnings: saved.warnings };
   } catch (error) {
@@ -166,10 +185,16 @@ export async function leaveGroup(formData: FormData): Promise<ActionResult> {
     const db = await getDb();
     const group = await getGroupByCode(db, code);
     if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
-    const token = await readToken(group.id);
-    if (!token) return { ok: false, error: "אין ניחוש שמור בדפדפן הזה." };
-    await deleteParticipation(db, group.id, token);
-    await clearToken(group.id);
+    await claimDeviceIdentity();
+    const userId = await currentUserId();
+    if (userId) {
+      await deleteParticipationForUser(db, group.id, userId);
+    } else {
+      const token = await readToken(group.id);
+      if (!token) return { ok: false, error: "אין ניחוש שמור בדפדפן הזה." };
+      await deleteParticipation(db, group.id, token);
+      await clearToken(group.id);
+    }
     paths(group.code);
     return { ok: true };
   } catch (error) {
@@ -197,7 +222,7 @@ export async function updateGroupAction(formData: FormData): Promise<ActionResul
     const db = await getDb();
     const group = await getGroupByCode(db, code);
     if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
-    const token = await requireGroupAdmin(group.id);
+    const admin = await requireGroupAdmin(group.id);
     const deadlineRaw = String(formData.get("deadline") || "");
     const clearDeadline = formData.get("clearDeadline") === "1";
     const deadline = clearDeadline ? null : deadlineRaw ? jerusalemLocalToIso(deadlineRaw) : group.deadline;
@@ -214,14 +239,14 @@ export async function updateGroupAction(formData: FormData): Promise<ActionResul
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : "הקופה לא תקינה." };
     }
-    await updateGroupAsAdmin(db, group.id, token, {
+    await updateGroupAsAdmin(db, group.id, admin.token, {
       name: String(formData.get("name") || group.name),
       deadline,
       electionStart,
       publicBoard: formData.get("publicBoard") === "1",
       stakeAgorot,
       payoutSplit,
-    });
+    }, admin.userId);
     paths(group.code);
     return { ok: true };
   } catch (error) {
@@ -235,9 +260,9 @@ export async function markPaidAction(formData: FormData): Promise<ActionResult> 
     const db = await getDb();
     const group = await getGroupByCode(db, code);
     if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
-    const token = await requireGroupAdmin(group.id);
+    const admin = await requireGroupAdmin(group.id);
     const paid = formData.getAll("paid").map((value) => String(value));
-    await setPaidAliases(db, group.id, token, paid);
+    await setPaidAliases(db, group.id, admin.token, paid, admin.userId);
     paths(group.code);
     return { ok: true };
   } catch (error) {
@@ -251,8 +276,8 @@ export async function lockNow(formData: FormData): Promise<ActionResult> {
     const db = await getDb();
     const group = await getGroupByCode(db, code);
     if (!group) return { ok: false, error: "הקבוצה לא נמצאה." };
-    const token = await requireGroupAdmin(group.id);
-    await updateGroupAsAdmin(db, group.id, token, { deadline: new Date().toISOString() });
+    const admin = await requireGroupAdmin(group.id);
+    await updateGroupAsAdmin(db, group.id, admin.token, { deadline: new Date().toISOString() }, admin.userId);
     paths(group.code);
     return { ok: true };
   } catch (error) {

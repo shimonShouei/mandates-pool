@@ -19,6 +19,7 @@ export const SCHEMA_STATEMENTS = [
     election_start TEXT,
     public_board INTEGER NOT NULL DEFAULT 1,
     admin_token_hash TEXT,
+    owner_user_id TEXT,
     stake_agorot INTEGER NOT NULL DEFAULT 0,
     payout_split TEXT NOT NULL DEFAULT '100',
     created_at TEXT NOT NULL
@@ -39,6 +40,7 @@ export const SCHEMA_STATEMENTS = [
     name_key TEXT NOT NULL,
     token_hash TEXT NOT NULL UNIQUE,
     paid INTEGER NOT NULL DEFAULT 0,
+    user_id TEXT,
     created_at TEXT NOT NULL,
     UNIQUE(group_id, name_key)
   )`,
@@ -100,6 +102,45 @@ export const SCHEMA_STATEMENTS = [
     party_id TEXT NOT NULL,
     PRIMARY KEY (bloc_id, party_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    email TEXT NOT NULL UNIQUE,
+    email_verified TEXT,
+    image TEXT,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS auth_accounts (
+    user_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    provider_account_id TEXT NOT NULL,
+    refresh_token TEXT,
+    access_token TEXT,
+    expires_at INTEGER,
+    token_type TEXT,
+    scope TEXT,
+    id_token TEXT,
+    session_state TEXT,
+    PRIMARY KEY (provider, provider_account_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS auth_sessions (
+    session_token TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    expires TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS auth_verification_tokens (
+    identifier TEXT NOT NULL,
+    token TEXT NOT NULL,
+    expires TEXT NOT NULL,
+    PRIMARY KEY (identifier, token)
+  )`,
+  `CREATE TABLE IF NOT EXISTS dev_mailbox (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    url TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS board_cache (
     id TEXT PRIMARY KEY,
     cache_key TEXT NOT NULL,
@@ -112,6 +153,9 @@ export const SCHEMA_STATEMENTS = [
 export const INDEX_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_parties_sort ON parties(sort_order, name)`,
   `CREATE INDEX IF NOT EXISTS idx_participants_group ON participants(group_id)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_participants_group_user ON participants(group_id, user_id) WHERE user_id IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_auth_accounts_user ON auth_accounts(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_predictions_participant ON predictions(participant_id)`,
   `CREATE INDEX IF NOT EXISTS idx_groups_public ON groups(public_board, created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_rows_snapshot ON result_rows(snapshot_id)`,

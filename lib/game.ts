@@ -42,6 +42,7 @@ type GroupRow = {
   election_start: string | null;
   public_board: number;
   admin_token_hash: string | null;
+  owner_user_id: string | null;
   stake_agorot: number | null;
   payout_split: string | null;
   created_at: string;
@@ -92,6 +93,7 @@ export async function createGroup(
   name: string,
   deadlineIso: string | null = null,
   electionStartIso: string | null = null,
+  ownerUserId: string | null = null,
 ) {
   const raw = name.normalize("NFKC");
   if (/[\u0000-\u001f]/.test(raw)) throw new GameError("שם הקבוצה צריך להיות בין 2 ל-40 תווים.");
@@ -108,9 +110,9 @@ export async function createGroup(
     const now = new Date().toISOString();
     try {
       await db.run(
-        `INSERT INTO groups (id, name, code, deadline, election_start, public_board, admin_token_hash, created_at)
-         VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
-        [id, clean, code, deadlineIso, electionStart, hashToken(adminToken), now],
+        `INSERT INTO groups (id, name, code, deadline, election_start, public_board, admin_token_hash, owner_user_id, created_at)
+         VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+        [id, clean, code, deadlineIso, electionStart, hashToken(adminToken), ownerUserId, now],
       );
       return { id, code, name: clean, adminToken };
     } catch (error) {
@@ -200,9 +202,10 @@ export async function updateGroupAsAdmin(
     stakeAgorot?: number;
     payoutSplit?: number[];
   },
+  userId: string | null = null,
 ) {
-  if (!(await isGroupAdmin(db, groupId, token))) {
-    throw new GameError("נדרש קישור הניהול של הקבוצה.");
+  if (!(await isGroupAdmin(db, groupId, token, userId))) {
+    throw new GameError("נדרש החשבון שפתח את הקבוצה, או קישור הניהול.");
   }
   await updateGroup(db, groupId, patch);
 }
@@ -277,13 +280,19 @@ export async function updateSite(
   await touchBoard(db);
 }
 
-export async function isGroupAdmin(db: Db, groupId: string, token: string | null): Promise<boolean> {
-  if (!token) return false;
-  const row = await db.get<{ admin_token_hash: string | null }>(
-    `SELECT admin_token_hash FROM groups WHERE id = ?`,
+export async function isGroupAdmin(
+  db: Db,
+  groupId: string,
+  token: string | null,
+  userId: string | null = null,
+): Promise<boolean> {
+  const row = await db.get<{ admin_token_hash: string | null; owner_user_id: string | null }>(
+    `SELECT admin_token_hash, owner_user_id FROM groups WHERE id = ?`,
     [groupId],
   );
-  if (!row?.admin_token_hash) return false;
+  if (!row) return false;
+  if (userId && row.owner_user_id === userId) return true;
+  if (!token || !row.admin_token_hash) return false;
   return safeEqual(row.admin_token_hash, hashToken(token));
 }
 
@@ -487,33 +496,59 @@ function assertBetsOpen(group: { electionStart: string; deadline: string | null 
   if (betsLocked(group.electionStart, group.deadline, now)) throw new GameError(LOCKED_MESSAGE);
 }
 
-export async function joinGroup(db: Db, groupId: string, displayName: string, now = Date.now()) {
+export async function joinGroup(
+  db: Db,
+  groupId: string,
+  displayName: string,
+  now = Date.now(),
+  userId: string | null = null,
+) {
   const alias = cleanDisplayName(displayName);
   if (!alias) throw new GameError("בחרו כינוי באורך 1 עד 24 תווים.");
   const group = await mustGroup(db, groupId);
   assertBetsOpen(group, now);
+  if (userId) {
+    const already = await participantFromUser(db, groupId, userId);
+    if (already) throw new GameError("כבר יש לכם ניחוש בקבוצה הזו.");
+  }
   const token = newToken();
   const id = newId();
   try {
     await db.run(
-      `INSERT INTO participants (id, group_id, display_name, name_key, token_hash, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, groupId, alias, nameKey(alias), hashToken(token), new Date().toISOString()],
+      `INSERT INTO participants (id, group_id, display_name, name_key, token_hash, user_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, groupId, alias, nameKey(alias), hashToken(token), userId, new Date().toISOString()],
     );
   } catch (error) {
     if (isUnique(error)) {
-      throw new GameError("הכינוי תפוס בקבוצה הזו. בחרו אחר, או היכנסו מאותו דפדפן שבו כבר הצטרפתם.");
+      if (userId && (await participantFromUser(db, groupId, userId))) {
+        throw new GameError("כבר יש לכם ניחוש בקבוצה הזו.");
+      }
+      throw new GameError("הכינוי תפוס בקבוצה הזו. בחרו אחר.");
     }
     throw error;
   }
   return { token, participantId: id, alias };
 }
 
+type ParticipantRow = { id: string; display_name: string; created_at: string };
+
+export async function participantFromUser(db: Db, groupId: string, userId: string | null) {
+  if (!userId) return null;
+  return (
+    (await db.get<ParticipantRow>(
+      `SELECT id, display_name, created_at FROM participants WHERE group_id = ? AND user_id = ?`,
+      [groupId, userId],
+    )) ?? null
+  );
+}
+
+/** A device token only opens a bet that has not been claimed by an account. */
 export async function participantFromToken(db: Db, groupId: string, token: string | null) {
   if (!token) return null;
   return (
-    (await db.get<{ id: string; display_name: string; created_at: string }>(
-      `SELECT id, display_name, created_at FROM participants WHERE group_id = ? AND token_hash = ?`,
+    (await db.get<ParticipantRow>(
+      `SELECT id, display_name, created_at FROM participants WHERE group_id = ? AND token_hash = ? AND user_id IS NULL`,
       [groupId, hashToken(token)],
     )) ?? null
   );
@@ -528,6 +563,29 @@ export async function savePrediction(
 ) {
   const participant = await participantFromToken(db, groupId, token);
   if (!participant) throw new GameError("לא מצאנו ניחוש שמור בדפדפן הזה. הצטרפו עם כינוי.");
+  return writePrediction(db, groupId, participant.id, rawSeats, now);
+}
+
+/** Writes the signed-in account's bet in this group, and never another person's row. */
+export async function savePredictionForUser(
+  db: Db,
+  groupId: string,
+  userId: string,
+  rawSeats: Record<string, unknown>,
+  now = Date.now(),
+) {
+  const participant = await participantFromUser(db, groupId, userId);
+  if (!participant) throw new GameError("אין לכם ניחוש בקבוצה הזו.");
+  return writePrediction(db, groupId, participant.id, rawSeats, now);
+}
+
+async function writePrediction(
+  db: Db,
+  groupId: string,
+  participantId: string,
+  rawSeats: Record<string, unknown>,
+  now: number,
+) {
   const group = await mustGroup(db, groupId);
   assertBetsOpen(group, now);
   const parties = await listParties(db);
@@ -545,11 +603,11 @@ export async function savePrediction(
   if (!check.ok) throw new GameError(check.error);
   const savedAt = new Date(now).toISOString();
   await db.transaction(async (tx) => {
-    await tx.run(`DELETE FROM predictions WHERE participant_id = ?`, [participant.id]);
+    await tx.run(`DELETE FROM predictions WHERE participant_id = ?`, [participantId]);
     for (const party of parties) {
       await tx.run(
         `INSERT INTO predictions (participant_id, party_id, seats, updated_at) VALUES (?, ?, ?, ?)`,
-        [participant.id, party.id, seats[party.id], savedAt],
+        [participantId, party.id, seats[party.id], savedAt],
       );
     }
   });
@@ -560,11 +618,21 @@ export async function savePrediction(
 export async function deleteParticipation(db: Db, groupId: string, token: string, now = Date.now()) {
   const participant = await participantFromToken(db, groupId, token);
   if (!participant) throw new GameError("לא מצאנו משתתף בדפדפן הזה.");
+  await removeParticipant(db, groupId, participant.id, now);
+}
+
+export async function deleteParticipationForUser(db: Db, groupId: string, userId: string, now = Date.now()) {
+  const participant = await participantFromUser(db, groupId, userId);
+  if (!participant) throw new GameError("אין לכם ניחוש בקבוצה הזו.");
+  await removeParticipant(db, groupId, participant.id, now);
+}
+
+async function removeParticipant(db: Db, groupId: string, participantId: string, now: number) {
   const group = await mustGroup(db, groupId);
   assertBetsOpen(group, now);
   await db.transaction(async (tx) => {
-    await tx.run(`DELETE FROM predictions WHERE participant_id = ?`, [participant.id]);
-    await tx.run(`DELETE FROM participants WHERE id = ?`, [participant.id]);
+    await tx.run(`DELETE FROM predictions WHERE participant_id = ?`, [participantId]);
+    await tx.run(`DELETE FROM participants WHERE id = ?`, [participantId]);
   });
   await touchBoard(db);
 }
@@ -587,9 +655,15 @@ export async function listParticipantsAdmin(db: Db, groupId: string): Promise<Ad
 }
 
 /** Group admin only. The mark is never part of a public board. */
-export async function setPaidAliases(db: Db, groupId: string, token: string | null, aliases: string[]) {
-  if (!(await isGroupAdmin(db, groupId, token))) {
-    throw new GameError("נדרש קישור הניהול של הקבוצה.");
+export async function setPaidAliases(
+  db: Db,
+  groupId: string,
+  token: string | null,
+  aliases: string[],
+  userId: string | null = null,
+) {
+  if (!(await isGroupAdmin(db, groupId, token, userId))) {
+    throw new GameError("נדרש החשבון שפתח את הקבוצה, או קישור הניהול.");
   }
   const people = await db.all<{ display_name: string }>(
     `SELECT display_name FROM participants WHERE group_id = ?`,
@@ -816,13 +890,20 @@ export async function loadScoreContext(db: Db): Promise<ScoreContext> {
   return { site, parties, actual, results, scoreable };
 }
 
-export async function getPublicState(db: Db, groupId: string, token: string | null): Promise<PublicGroupState> {
+export async function getPublicState(
+  db: Db,
+  groupId: string,
+  token: string | null,
+  userId: string | null = null,
+): Promise<PublicGroupState> {
   const group = await mustGroup(db, groupId);
   const { readGroupBoard } = await import("./board-cache");
   const board = await readGroupBoard(db, groupId);
   const schedule = lockSchedule(group.electionStart, group.deadline);
   const locked = isLocked(schedule.lockAt);
-  const you = await participantFromToken(db, groupId, token);
+  const you = userId
+    ? await participantFromUser(db, groupId, userId)
+    : await participantFromToken(db, groupId, token);
   let own: OwnView | null = null;
   if (you) {
     const predictionRows = await db.all<{ party_id: string; seats: number }>(
@@ -1009,6 +1090,7 @@ export type Group = {
   payoutSplit: number[];
   createdAt: string;
   hasAdminLink: boolean;
+  ownerUserId: string | null;
 };
 
 function presentGroup(row: GroupRow): Group {
@@ -1023,6 +1105,7 @@ function presentGroup(row: GroupRow): Group {
     payoutSplit: parseStoredSplit(row.payout_split),
     createdAt: row.created_at,
     hasAdminLink: Boolean(row.admin_token_hash),
+    ownerUserId: row.owner_user_id ?? null,
   };
 }
 

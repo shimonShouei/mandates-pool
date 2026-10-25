@@ -47,6 +47,11 @@ async function tokenMap(): Promise<Record<string, string>> {
   }
 }
 
+export async function readParticipantTokens(): Promise<Record<string, string>> {
+  const map = await tokenMap();
+  return Object.fromEntries(Object.entries(map).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+}
+
 export async function readToken(groupId: string): Promise<string | null> {
   const map = await tokenMap();
   const token = map[groupId];
@@ -78,6 +83,11 @@ async function readJsonCookie(name: string): Promise<Record<string, string>> {
   } catch {
     return {};
   }
+}
+
+export async function readGroupAdminTokens(): Promise<Record<string, string>> {
+  const map = await readJsonCookie(GROUP_ADMIN_COOKIE);
+  return Object.fromEntries(Object.entries(map).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 }
 
 export async function readGroupAdminToken(groupId: string): Promise<string | null> {

@@ -1,3 +1,5 @@
+import { currentUserId } from "@/auth";
+import { claimDeviceIdentity } from "@/lib/claim-device";
 import { getDb } from "@/lib/db";
 import { getGroupByCode, getPublicState } from "@/lib/game";
 import { privateCacheHeaders } from "@/lib/http-cache";
@@ -13,7 +15,9 @@ export async function GET(_request: Request, context: { params: Promise<{ code: 
   if (!group) {
     return Response.json({ error: "not_found" }, { status: 404, headers: privateCacheHeaders() });
   }
-  const token = await readToken(group.id);
-  const state = await getPublicState(db, group.id, token);
+  await claimDeviceIdentity();
+  const userId = await currentUserId();
+  const token = userId ? null : await readToken(group.id);
+  const state = await getPublicState(db, group.id, token, userId);
   return Response.json({ own: state.own }, { headers: privateCacheHeaders() });
 }

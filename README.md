@@ -6,8 +6,8 @@
 
 ## איך זה עובד
 
-1. בדף הבית נותנים שם לקבוצה. מי שפתח אותה מקבל קישור ניהול פרטי, שנשמר בדפדפן. הסוד `ADMIN_SECRET` לא נדרש לניהול קבוצה.
-2. כל חבר נכנס עם הקישור ובוחר כינוי (אפשר שם בדוי). אין סיסמה. הדפדפן שומר אסימון, ורק האסימון הזה יכול לערוך את הניחוש.
+1. בדף הבית נכנסים לחשבון ונותנים שם לקבוצה. מי שפתח אותה הוא מנהל הקבוצה מהחשבון שלו, ומקבל גם קישור ניהול לגיבוי. הסוד `ADMIN_SECRET` לא נדרש לניהול קבוצה.
+2. כל חבר נכנס עם Google או עם קישור למייל (בלי סיסמה), ואז בוחר כינוי לקבוצה (אפשר שם בדוי). חשבון אחד יכול להיות בכמה קבוצות, עם ניחוש אחד וכינוי אחד בכל קבוצה. הכינוי הוא מה שרואים בדירוג. המייל לא מוצג למשתתפים אחרים ולא למנהל הקבוצה. מי שכבר ניחש מהדפדפן בלי חשבון נכנס מאותו מכשיר, והניחוש עובר לחשבון.
 3. מחלקים מספרים שלמים שסכומם 120. ערך בין 1 ל-3 מקבל אזהרה: אחוז החסימה הוא 3.25%, ורשימה שלא עוברת אותו מקבלת 0.
 4. הניחושים ננעלים אוטומטית ב-07:00 שעון ישראל ביום הבחירות (27 באוקטובר 2026 לקבוצה חדשה), כשהקלפיות נפתחות. מנהל הקבוצה יכול להקדים את הנעילה, לא לאחר אותה. אחרי הנעילה אי אפשר להצטרף או לשנות ניחוש.
 5. התוצאות, רשימת המפלגות והסכמי העודפים משותפים לכל הקבוצות. אותם מושך או מזין רק מי שנכנס עם `ADMIN_SECRET` אל `/admin`. אם המשיכה מוועדת הבחירות נכשלת, מעלים את דף התוצאות מהדפדפן או מזינים מנדטים ידנית.
@@ -50,6 +50,12 @@ npm run dev
 | `DATABASE_DIRECT` | לא | `1` מבטל את ההחלפה ל-pooler. |
 | `RESULTS_SOURCE_URL` | לא | כתובת חלופית לדף התוצאות, אם רוצים לעקוף את ברירת המחדל. |
 | `SQLITE_PATH` | לא | נתיב לקובץ SQLite המקומי. |
+| `AUTH_SECRET` | לכניסה | סוד לחתימת ההתחברות. `openssl rand -base64 32`. בלי זה אין כניסה. מקומית, אם הוא חסר, יש ערך לפיתוח בלבד. |
+| `AUTH_URL` | בפרודקשן | הכתובת הציבורית, למשל `https://<project>.vercel.app`. הקישור במייל נבנה ממנה. |
+| `AUTH_GOOGLE_ID` | ל-Google | מזהה לקוח OAuth. בלי הזוג הזה כפתור Google לא מופיע. |
+| `AUTH_GOOGLE_SECRET` | ל-Google | סוד לקוח OAuth. |
+| `AUTH_RESEND_KEY` | למייל אמיתי | מפתח [Resend](https://resend.com). בלי מפתח, ורק כשזה לא פרודקשן, הקישור מופיע בדף הכניסה. |
+| `EMAIL_FROM` | למייל אמיתי | כתובת שולח מאומתת, למשל `מנדטים <login@example.com>`. |
 
 ## פריסה כך שחברים ייכנסו מכתובת ציבורית
 
@@ -58,7 +64,7 @@ SQLite לא נשמר על ורסל. צריך Postgres.
 1. צרו מסד ב-[Neon](https://neon.tech) במסלול החינמי. העתיקו מחרוזת חיבור עם `sslmode=require`. אפשר את הכתובת הרגילה: האפליקציה מוסיפה `-pooler` בעצמה, אלא אם `DATABASE_DIRECT=1`.
 2. דחפו את הריפו לגיטהאב, אם עוד אין שם ריפו.
 3. ב-[Vercel](https://vercel.com) בחרו Import Project, וחברו את הריפו. הפריימוורק מזוהה כ-Next.js. מסלול Hobby מספיק.
-4. הגדירו בסביבה של הפרויקט: `ADMIN_SECRET`, `CRON_SECRET`, `DATABASE_URL`.
+4. הגדירו בסביבה של הפרויקט: `ADMIN_SECRET`, `CRON_SECRET`, `DATABASE_URL`, `AUTH_SECRET`, `AUTH_URL`. לכניסה עם Google הוסיפו `AUTH_GOOGLE_ID` ו-`AUTH_GOOGLE_SECRET`. לקישור במייל הוסיפו `AUTH_RESEND_KEY` ו-`EMAIL_FROM`.
 5. פרסו. הכתובת תהיה מהצורה `https://<project>.vercel.app`.
 6. שלחו את `https://<project>.vercel.app`. כל אחד פותח קבוצה מדף הבית. `https://<project>.vercel.app/board` הוא הדירוג הארצי. `https://<project>.vercel.app/admin` מיועד רק למי שמחזיק ב-`ADMIN_SECRET`.
 
@@ -74,6 +80,17 @@ SQLite לא נשמר על ורסל. צריך Postgres.
 - הניחוש הפרטי הוא `GET /api/groups/[code]/me` עם `private, no-store`. הוא לא מושך את ועדת הבחירות, והדף מבקש אותו רק כשחותמת התוצאות משתנה.
 - החיבור ל-Neon הוא `@neondatabase/serverless`, חיבור אחד לכל מופע (`max: 1`), דרך ה-pooler. כך לא אוכלים את מכסת החיבורים הישירים של המסלול החינמי.
 - קיבולת צפויה: עשרות קבוצות ואלפי ניחושים שלמים הם מעבר אחד בזיכרון. הבדיקה מריצה 120 ניחושים בנוחות. מה שיקר הוא המשיכה מוועדת הבחירות, והיא מוגבלת לפעם בשלוש דקות לכל האתר. בליל הבחירות רוב הקריאות לדירוג נענות מה-CDN ומהצילום שבמסד.
+- הכניסה נשמרת באותו מסד Neon, בלי שירות משתמשים נוסף. Google OAuth הוא בחינם. Resend במסלול החינמי, נכון ל-2026, שולח בערך 3,000 מיילים בחודש ועד 100 ביום, עם דומיין מאומת אחד. הכתובת `onboarding@resend.dev` שולחת רק אל המייל של חשבון Resend עצמו, ומתאימה לבדיקה. חברים אמיתיים צריכים דומיין מאומת ו-`EMAIL_FROM` עליו.
+
+## כניסה
+
+Auth.js (חבילת `next-auth`) עם שתי דרכים, בלי סיסמה שנשמרת אצלנו:
+
+- **Google.** ב-[Google Cloud Console](https://console.cloud.google.com/) יוצרים פרויקט, מסך הסכמה, ואז Credentials → OAuth client ID → Web application. ה-redirect הוא `https://<הכתובת>/api/auth/callback/google`, ומקומית גם `http://localhost:38471/api/auth/callback/google` אם מריצים על הפורט הזה. מעתיקים את המזהה ואת הסוד אל `AUTH_GOOGLE_ID` ו-`AUTH_GOOGLE_SECRET`.
+- **קישור למייל.** ב-[Resend](https://resend.com) יוצרים מפתח API אל `AUTH_RESEND_KEY`, מאמתים דומיין, ושמים את הכתובת השולחת ב-`EMAIL_FROM`. הקישור חד-פעמי ובתוקף לשעה. אותו מייל ב-Google ובקישור נכנס לאותו חשבון.
+- מקומית בלי המפתחות: כפתור Google מוסתר, והקישור למייל מופיע בדף `/signin` אחרי השליחה. זה לא קורה כש-`NODE_ENV` הוא `production`.
+
+חשבון יכול להצטרף לכמה קבוצות. בכל קבוצה יש ניחוש אחד וכינוי אחד. ניחוש ישן שנשמר רק בעוגייה בדפדפן עובר לחשבון בכניסה מאותו מכשיר, והעוגייה הישנה מפסיקה לפתוח אותו. מנהל הקבוצה הוא החשבון שיצר אותה. קישור הגיבוי נשאר, ומי שמחזיק בו עדיין יכול לנהל.
 
 ## רשימת המפלגות
 
@@ -118,9 +135,9 @@ A Hebrew, right-to-left site for predicting how the 120 Knesset seats will split
 
 ## Rules
 
-The homepage creates a group. The creator becomes that group's admin through a private link stored in an httpOnly cookie. `ADMIN_SECRET` is only for the shared official results, the party list, and surplus agreements. Those are the same for every group.
+The homepage creates a group after sign-in. The creator's account is that group's admin, and a backup admin link is shown once. `ADMIN_SECRET` is only for the shared official results, the party list, and surplus agreements. Those are the same for every group.
 
-Participants join with an invite link and a nickname. A random token in an httpOnly cookie is the only credential, and it can edit only that browser's guess. Guesses are whole numbers totaling 120. Values from 1 to 3 warn that they cannot occur under the 3.25% threshold.
+Participants sign in with Google or an email magic link, then pick a nickname for that group. There is no password. One account can join many groups, with one bet and one nickname in each. The nickname is the only public identifier. Email addresses are not shown to other participants or to the group admin. A bet saved in a browser before accounts existed is claimed by signing in on that same device, and the old cookie stops opening it. Guesses are whole numbers totaling 120. Values from 1 to 3 warn that they cannot occur under the 3.25% threshold.
 
 Guesses lock automatically at 07:00 Asia/Jerusalem on election day, when polling stations open. A new group defaults to 27 October 2026. The group admin can set an earlier lock, and cannot keep guesses open past polls opening. The clock follows Israel daylight saving time. After the lock, joining and editing are rejected on the server.
 
@@ -154,7 +171,7 @@ Install from Chrome or Edge with “Install app” / “Add to home screen”. O
 1. Create a Postgres database on the [Neon](https://neon.tech) free plan and copy a connection string with `sslmode=require`. A host without `-pooler` is rewritten to the pooler unless `DATABASE_DIRECT=1`.
 2. Push this repo to GitHub.
 3. Import it on [Vercel](https://vercel.com) as a Next.js app. The Hobby plan is enough.
-4. Set `ADMIN_SECRET`, `CRON_SECRET`, and `DATABASE_URL`. SQLite will not persist on Vercel; the app refuses to boot there without `DATABASE_URL`.
+4. Set `ADMIN_SECRET`, `CRON_SECRET`, `DATABASE_URL`, `AUTH_SECRET`, and `AUTH_URL`. Add `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` for Google, and `AUTH_RESEND_KEY` plus `EMAIL_FROM` for magic links. SQLite will not persist on Vercel; the app refuses to boot there without `DATABASE_URL`.
 5. Share `https://<project>.vercel.app`. People create their own groups there. `/board` is the national leaderboard. `/scoring` explains the score in Hebrew. `/admin` is only for the `ADMIN_SECRET` holder.
 
 ## Free tier on election night
@@ -169,6 +186,19 @@ The app is meant to run on Vercel Hobby and Neon’s free plan, without a freque
 - A person’s own bet is `GET /api/groups/[code]/me` with `private, no-store`. That route does not fetch the committee, and the page asks for it only when the results timestamp changes.
 - Neon uses `@neondatabase/serverless` with one connection per instance (`max: 1`) through the pooler, so the free plan’s direct-connection quota stays unused.
 - Expected capacity: dozens of groups and thousands of complete guesses are one in-memory pass. The test suite scores 120 guesses comfortably. The expensive step is the committee fetch, and that is limited to once every three minutes for the whole site. On election night most leaderboard reads are answered by the CDN and the stored snapshot.
+- Sign-in sessions live in the same Neon database. Google OAuth is free. Resend's free tier, as of 2026, is about 3,000 emails a month and 100 a day, with one verified domain. `onboarding@resend.dev` delivers only to the Resend account's own address, which is enough for a test. Real friends need a verified domain and `EMAIL_FROM` on it.
+
+## Sign-in
+
+Auth.js (`next-auth`) offers two passwordless options. Nothing here stores a password.
+
+- **Google.** In [Google Cloud Console](https://console.cloud.google.com/) create a project, configure the consent screen, then Credentials → OAuth client ID → Web application. The redirect URI is `https://<host>/api/auth/callback/google`. For this local port also add `http://localhost:38471/api/auth/callback/google`. Put the client id and secret in `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`.
+- **Email magic link.** Create an API key at [Resend](https://resend.com) and set `AUTH_RESEND_KEY`. Verify a domain and set `EMAIL_FROM` to an address on it. The link works once and expires after an hour. The same email on Google and on the magic link is the same account.
+- Locally, with those keys unset, the Google button is hidden and the magic link is printed on `/signin` after you ask for it. That inbox is not rendered when `NODE_ENV` is `production`.
+
+Generate `AUTH_SECRET` with `openssl rand -base64 32`. Set `AUTH_URL` to the public origin so the link in the email points at the site.
+
+An account can join several groups. Each group has one bet and one nickname. A legacy cookie bet is claimed when that person signs in on the same device, and the cookie can no longer open it. The account that created a group is its admin. The backup link still works for whoever holds it.
 
 ## Parties
 

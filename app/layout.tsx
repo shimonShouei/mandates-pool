@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Frank_Ruhl_Libre, Heebo } from "next/font/google";
+import { ClaimDevice } from "@/components/claim-device";
 import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
 
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="he" dir="rtl" className={`${heebo.variable} ${frank.variable}`}>
       <body className="min-h-dvh antialiased">
         <PwaRegister />
+        <ClaimDevice />
         {children}
       </body>
     </html>

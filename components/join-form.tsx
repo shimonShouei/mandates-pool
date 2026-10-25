@@ -54,7 +54,7 @@ export function JoinForm({
           className="h-11 text-base"
         />
         <p className="text-sm text-muted-foreground">
-          הכינוי מופיע בדירוג. אפשר שם בדוי. הניחוש עצמו נשאר רק אצלכם.
+          הכינוי מופיע בדירוג. אפשר שם בדוי. הניחוש נשאר על החשבון, והמייל לא מוצג.
         </p>
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
