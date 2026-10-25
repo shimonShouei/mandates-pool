@@ -4,6 +4,7 @@ import Resend from "next-auth/providers/resend";
 import type { Provider } from "next-auth/providers";
 import { appAuthAdapter } from "@/lib/auth-adapter";
 import { devInboxEnabled, storeDevMail } from "@/lib/dev-mail";
+import { authRedirect } from "@/lib/public-origin";
 
 if (!process.env.AUTH_SECRET && process.env.NODE_ENV !== "production") {
   process.env.AUTH_SECRET = "dev-only-mandatim-auth-secret";
@@ -80,10 +81,13 @@ const nextAuth = process.env.AUTH_SECRET
       session: { strategy: "database", maxAge: 60 * 60 * 24 * 180 },
       pages: {
         signIn: "/signin",
-        verifyRequest: "/signin?sent=1",
-        error: "/signin?error=1",
+        verifyRequest: "/signin/sent",
+        error: "/signin",
       },
       callbacks: {
+        redirect({ url, baseUrl }) {
+          return authRedirect(url, baseUrl);
+        },
         session({ session, user }) {
           session.user.id = user.id;
           return session;

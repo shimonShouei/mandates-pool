@@ -26,7 +26,7 @@ export default async function SignInPage({
         google={modes.google}
         email={modes.email}
         sent={query.sent === "1"}
-        failed={query.error === "1"}
+        failed={Boolean(query.error)}
       />
       {inbox.length > 0 ? (
         <section className="mt-6 space-y-2 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
