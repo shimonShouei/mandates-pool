@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { migrateLegacySite } from "./legacy-migrate";
-import { pooledNeonUrl } from "./neon-url";
+import { migrationDriver, pooledNeonUrl, runtimeDatabaseUrl } from "./neon-url";
 import { INDEX_STATEMENTS, SCHEMA_STATEMENTS } from "./schema";
 
 export type RunResult = { changes: number };
@@ -193,6 +193,84 @@ export async function createPgDb(connectionString: string): Promise<Db> {
   return db;
 }
 
+/**
+ * Apply schema and the parties seed on a direct Postgres connection.
+ * Used from the Vercel build. The first request also migrates, through the
+ * pooled Neon driver, if this step did not run.
+ */
+export async function applyPostgresMigrations(connectionString: string): Promise<number> {
+  if (migrationDriver(connectionString) === "neon") return migrateOnNeon(connectionString);
+  return migrateOnPg(connectionString);
+}
+
+async function countParties(db: Db): Promise<number> {
+  const count = await db.get<{ c: number | string }>(`SELECT COUNT(*) AS c FROM parties`);
+  return Number(count?.c ?? 0);
+}
+
+async function migrateOnNeon(connectionString: string): Promise<number> {
+  const { Pool, neonConfig } = await import("@neondatabase/serverless");
+  const ws = await import("ws");
+  neonConfig.webSocketConstructor = ws.default;
+  const pool = new Pool({
+    connectionString,
+    max: 1,
+    connectionTimeoutMillis: 20_000,
+  });
+  try {
+    const db = new PgDb(pool);
+    await migrate(db);
+    // Finish the read before finally closes the pool. Returning the promise
+    // directly lets pool.end() run while the count query is still open.
+    return await countParties(db);
+  } finally {
+    await pool.end();
+  }
+}
+
+async function migrateOnPg(connectionString: string): Promise<number> {
+  const { Pool } = await import("pg");
+  const pool = new Pool({
+    connectionString: withoutChannelBinding(connectionString),
+    max: 1,
+    connectionTimeoutMillis: 20_000,
+    ssl: pgSsl(connectionString),
+  });
+  try {
+    const db = new PgDb(pool as unknown as PgClient);
+    await migrate(db);
+    return await countParties(db);
+  } finally {
+    await pool.end();
+  }
+}
+
+function withoutChannelBinding(connectionString: string): string {
+  try {
+    const parsed = new URL(connectionString);
+    if (!parsed.searchParams.has("channel_binding")) return connectionString;
+    parsed.searchParams.delete("channel_binding");
+    return parsed.toString();
+  } catch {
+    return connectionString;
+  }
+}
+
+function pgSsl(connectionString: string): { rejectUnauthorized: boolean } | undefined {
+  let hostname = "";
+  let mode: string | null = null;
+  try {
+    const parsed = new URL(connectionString);
+    hostname = parsed.hostname;
+    mode = parsed.searchParams.get("sslmode");
+  } catch {
+    return undefined;
+  }
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") return undefined;
+  if (!mode || mode === "disable" || mode === "allow" || mode === "prefer") return undefined;
+  return { rejectUnauthorized: mode === "verify-full" || mode === "verify-ca" };
+}
+
 let singleton: Promise<Db> | null = null;
 
 export function getDb(): Promise<Db> {
@@ -207,8 +285,8 @@ function bindParams(params: unknown[]): unknown[] {
 }
 
 async function openDefault(): Promise<Db> {
-  const url = process.env.DATABASE_URL;
-  if (url && /^postgres(ql)?:/i.test(url)) return createPgDb(url);
+  const url = runtimeDatabaseUrl();
+  if (url) return createPgDb(url);
   if (process.env.VERCEL) {
     throw new Error("DATABASE_URL is required on Vercel. A SQLite file does not persist there.");
   }

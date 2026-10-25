@@ -3,24 +3,20 @@ import Google from "next-auth/providers/google";
 import Resend from "next-auth/providers/resend";
 import type { Provider } from "next-auth/providers";
 import { appAuthAdapter } from "@/lib/auth-adapter";
-import { devInboxEnabled, storeDevMail } from "@/lib/dev-mail";
+import { authModes } from "@/lib/auth-modes";
+import { storeDevMail } from "@/lib/dev-mail";
 import { authRedirect } from "@/lib/public-origin";
+
+export { authModes } from "@/lib/auth-modes";
 
 if (!process.env.AUTH_SECRET && process.env.NODE_ENV !== "production") {
   process.env.AUTH_SECRET = "dev-only-mandatim-auth-secret";
 }
 
-export function authModes() {
-  return {
-    google: Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET),
-    email: Boolean(process.env.AUTH_RESEND_KEY) || process.env.NODE_ENV !== "production",
-    devInbox: devInboxEnabled(),
-  };
-}
-
 function providers(): Provider[] {
+  const modes = authModes();
   const list: Provider[] = [];
-  if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
+  if (modes.google && process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
     list.push(
       Google({
         clientId: process.env.AUTH_GOOGLE_ID,
@@ -29,37 +25,39 @@ function providers(): Provider[] {
       }),
     );
   }
-  list.push(
-    Resend({
-      apiKey: process.env.AUTH_RESEND_KEY || "dev",
-      from: process.env.EMAIL_FROM || "Mandatim <onboarding@resend.dev>",
-      maxAge: 60 * 60,
-      async sendVerificationRequest({ identifier, url, provider }) {
-        if (process.env.AUTH_RESEND_KEY) {
-          const response = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${provider.apiKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              from: provider.from,
-              to: identifier,
-              subject: "קישור כניסה למנדטים",
-              text: `כניסה למנדטים:\n${url}\n\nהקישור נפתח פעם אחת, ובתוקף לשעה.`,
-              html: `<p>כניסה למנדטים:</p><p><a href="${escapeHtml(url)}">לחצו כאן</a></p><p>הקישור נפתח פעם אחת, ובתוקף לשעה.</p>`,
-            }),
-          });
-          if (!response.ok) throw new Error("שליחת המייל נכשלה.");
-          return;
-        }
-        if (process.env.NODE_ENV === "production") {
-          throw new Error("שליחת מייל לא הוגדרה.");
-        }
-        await storeDevMail(identifier, url);
-      },
-    }),
-  );
+  if (modes.email) {
+    list.push(
+      Resend({
+        apiKey: process.env.AUTH_RESEND_KEY || "dev",
+        from: process.env.EMAIL_FROM || "Mandatim <onboarding@resend.dev>",
+        maxAge: 60 * 60,
+        async sendVerificationRequest({ identifier, url, provider }) {
+          if (process.env.AUTH_RESEND_KEY) {
+            const response = await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${provider.apiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                from: provider.from,
+                to: identifier,
+                subject: "קישור כניסה למנדטים",
+                text: `כניסה למנדטים:\n${url}\n\nהקישור נפתח פעם אחת, ובתוקף לשעה.`,
+                html: `<p>כניסה למנדטים:</p><p><a href="${escapeHtml(url)}">לחצו כאן</a></p><p>הקישור נפתח פעם אחת, ובתוקף לשעה.</p>`,
+              }),
+            });
+            if (!response.ok) throw new Error("שליחת המייל נכשלה.");
+            return;
+          }
+          if (process.env.NODE_ENV === "production") {
+            throw new Error("שליחת מייל לא הוגדרה.");
+          }
+          await storeDevMail(identifier, url);
+        },
+      }),
+    );
+  }
   return list;
 }
 
@@ -73,6 +71,10 @@ function escapeHtml(value: string) {
   });
 }
 
+// AUTH_URL is optional. trustHost reads the request host, which on Vercel is
+// the production domain or the deployment host (VERCEL_URL). Copying
+// VERCEL_URL into AUTH_URL would pin callbacks to that deployment hostname
+// and drop the session cookie on the public alias, so it is left unset.
 const nextAuth = process.env.AUTH_SECRET
   ? NextAuth({
       adapter: appAuthAdapter(),

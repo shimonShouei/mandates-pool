@@ -46,33 +46,34 @@ npm run dev
 | --- | --- | --- |
 | `ADMIN_SECRET` | לניהול האתר | סוד לתוצאות, לרשימות, להסכמי העודפים ולמשקל בונוס החסימה. לא נדרש כדי לפתוח קבוצה. |
 | `CRON_SECRET` | בפרודקשן | וורסל שולחת `Authorization: Bearer <CRON_SECRET>` אל הרענון היומי. |
-| `DATABASE_URL` | על ורסל | מחרוזת Postgres. כתובת Neon בלי `-pooler` מוחלפת אוטומטית ל-pooler. |
-| `DATABASE_DIRECT` | לא | `1` מבטל את ההחלפה ל-pooler. |
+| `DATABASE_URL` | על ורסל | מחרוזת Postgres לשימוש רגיל. אצל Neon בורסל זו הכתובת עם `-pooler`. כתובת `*.neon.tech` בלי `-pooler` מוחלפת אליו. |
+| `DATABASE_URL_UNPOOLED` | לא | החיבור הישיר. אינטגרציית Neon בורסל כבר מגדירה אותו. המיגרציה מעדיפה אותו, ואם הוא חסר אז `POSTGRES_URL_NON_POOLING`. |
+| `DATABASE_DIRECT` | לא | לא צריך כשהמשתנה למעלה קיים. `1` מבטל את ההחלפה ל-pooler. מחרוזת Postgres כאן נחשבת לחיבור הישיר. |
 | `RESULTS_SOURCE_URL` | לא | כתובת חלופית לדף התוצאות, אם רוצים לעקוף את ברירת המחדל. |
 | `SQLITE_PATH` | לא | נתיב לקובץ SQLite המקומי. |
-| `AUTH_SECRET` | לכניסה | סוד לחתימת ההתחברות. `openssl rand -base64 32`. בלי זה אין כניסה. מקומית, אם הוא חסר, יש ערך לפיתוח בלבד. |
-| `AUTH_URL` | בפרודקשן | הכתובת הציבורית, למשל `https://<project>.vercel.app`. הקישור במייל נבנה ממנה. |
-| `AUTH_GOOGLE_ID` | ל-Google | מזהה לקוח OAuth. בלי הזוג הזה כפתור Google לא מופיע. |
+| `AUTH_SECRET` | לכניסה | סוד לחתימת ההתחברות. `openssl rand -base64 32`. בלי זה אין כניסה, והאתר עצמו עולה. מקומית, אם הוא חסר, יש ערך לפיתוח בלבד. |
+| `AUTH_URL` | לא | אפשר להשאיר ריק. `trustHost` לוקח את הכתובת מהבקשה. בורסל זו הדומיין הציבורי, או `VERCEL_URL` של אותו דיפלוי. |
+| `AUTH_GOOGLE_ID` | ל-Google | מזהה לקוח OAuth. בלי שני המשתנים כפתור Google לא מופיע, והאתר עולה. |
 | `AUTH_GOOGLE_SECRET` | ל-Google | סוד לקוח OAuth. |
-| `AUTH_RESEND_KEY` | למייל אמיתי | מפתח [Resend](https://resend.com). בלי מפתח, ורק כשזה לא פרודקשן, הקישור מופיע בדף הכניסה. |
+| `AUTH_RESEND_KEY` | למייל אמיתי | מפתח [Resend](https://resend.com). בלי מפתח בפרודקשן טופס המייל מוסתר. מחוץ לפרודקשן הקישור מופיע בדף הכניסה. |
 | `EMAIL_FROM` | למייל אמיתי | כתובת שולח מאומתת, למשל `מנדטים <login@example.com>`. |
 
 ## פריסה כך שחברים ייכנסו מכתובת ציבורית
 
 SQLite לא נשמר על ורסל. צריך Postgres.
 
-1. צרו מסד ב-[Neon](https://neon.tech) במסלול החינמי. העתיקו מחרוזת חיבור עם `sslmode=require`. אפשר את הכתובת הרגילה: האפליקציה מוסיפה `-pooler` בעצמה, אלא אם `DATABASE_DIRECT=1`.
-2. דחפו את הריפו לגיטהאב, אם עוד אין שם ריפו.
+1. צרו מסד ב-[Neon](https://neon.tech) במסלול החינמי, או חברו את Neon מתוך ורסל. האינטגרציה שמה `DATABASE_URL` (עם pooler) וגם `DATABASE_URL_UNPOOLED`. לא צריך להוסיף `DATABASE_DIRECT`.
+2. דחפו את הריפו, אם עוד אין חיבור.
 3. ב-[Vercel](https://vercel.com) בחרו Import Project, וחברו את הריפו. הפריימוורק מזוהה כ-Next.js. מסלול Hobby מספיק.
-4. הגדירו בסביבה של הפרויקט: `ADMIN_SECRET`, `CRON_SECRET`, `DATABASE_URL`, `AUTH_SECRET`, `AUTH_URL`. לכניסה עם Google הוסיפו `AUTH_GOOGLE_ID` ו-`AUTH_GOOGLE_SECRET`. לקישור במייל הוסיפו `AUTH_RESEND_KEY` ו-`EMAIL_FROM`.
-5. פרסו. הכתובת תהיה מהצורה `https://<project>.vercel.app`.
+4. הגדירו `ADMIN_SECRET`, `CRON_SECRET`, `AUTH_SECRET`, ואת מחרוזות Neon. `AUTH_URL` לא חובה. Google ו-Resend לא חובה: בלי המפתחות הכפתורים פשוט לא מופיעים.
+5. פרסו. בזמן הבנייה, אם יש כתובת Postgres, רצה המיגרציה על החיבור הישיר ורשימת המפלגות נזרעת כשהטבלה ריקה. אותה פעולה רצה שוב בבקשה הראשונה אם הבנייה דילגה. הכתובת תהיה מהצורה `https://<project>.vercel.app`.
 6. שלחו את `https://<project>.vercel.app`. כל אחד פותח קבוצה מדף הבית. `https://<project>.vercel.app/board` הוא הדירוג הארצי. `https://<project>.vercel.app/admin` מיועד רק למי שמחזיק ב-`ADMIN_SECRET`.
 
 ## מסלול חינמי בליל הבחירות
 
 האתר בנוי ל-Vercel Hobby ול-Neon החינמי, בלי להסתמך על cron תכוף.
 
-- Hobby מריץ משימה מתוזמנת בערך פעם ביום. `vercel.json` קובע `0 3 * * *` על `/api/cron/refresh-results`. הרענון האמיתי הוא לפי דרישה.
+- Hobby מריץ משימה מתוזמנת פעם ביום לכל היותר. `vercel.json` קובע `0 3 * * *` על `/api/cron/refresh-results`. הרענון האמיתי הוא לפי דרישה.
 - פתיחת הדירוג הארצי (`GET /api/leaderboard`) או דירוג הקבוצה הציבורי (`GET /api/groups/[code]/standings`) בודקת אם מותר למשוך. מנעול על `last_fetch_attempt_at` מבטיח משיכה אחת לכל היותר בכל שלוש דקות, לכל המבקרים יחד.
 - כל כתובת מקבלת עד 4 שניות, והלולאה נעצרת אחרי 7 שניות. כך הרענון נכנס במגבלת הפונקציה של Hobby, בערך 10 שניות.
 - הדירוג של כל קבוצה והדירוג הארצי מחושבים פעם אחת כשמשתנים התוצאה, הניחושים, משקל הבונוס או רשימת הקבוצות, ונשמרים ב-`board_cache`. אחר כך קוראים את הצילום.
@@ -168,17 +169,17 @@ Install from Chrome or Edge with “Install app” / “Add to home screen”. O
 
 ## Deploy so friends have a public URL
 
-1. Create a Postgres database on the [Neon](https://neon.tech) free plan and copy a connection string with `sslmode=require`. A host without `-pooler` is rewritten to the pooler unless `DATABASE_DIRECT=1`.
-2. Push this repo to GitHub.
+1. Create a Postgres database on the [Neon](https://neon.tech) free plan, or attach Neon from the Vercel project. The integration sets `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED`. `DATABASE_DIRECT` is unnecessary. A `*.neon.tech` host without `-pooler` is still rewritten to the pooler for ordinary queries.
+2. Push this repo.
 3. Import it on [Vercel](https://vercel.com) as a Next.js app. The Hobby plan is enough.
-4. Set `ADMIN_SECRET`, `CRON_SECRET`, `DATABASE_URL`, `AUTH_SECRET`, and `AUTH_URL`. Add `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` for Google, and `AUTH_RESEND_KEY` plus `EMAIL_FROM` for magic links. SQLite will not persist on Vercel; the app refuses to boot there without `DATABASE_URL`.
-5. Share `https://<project>.vercel.app`. People create their own groups there. `/board` is the national leaderboard. `/scoring` explains the score in Hebrew. `/admin` is only for the `ADMIN_SECRET` holder.
+4. Set `ADMIN_SECRET`, `CRON_SECRET`, `AUTH_SECRET`, and the Neon URLs. Leave `AUTH_URL` empty: `trustHost` uses the request host, and `VERCEL_URL` covers a request that only has the deployment host. Google and Resend are optional. Without their keys those buttons stay hidden and the site still boots. SQLite will not persist on Vercel; the app refuses to boot there without a Postgres URL.
+5. Deploy. The build runs the schema migration when a Postgres URL is present, on the direct URL, and seeds the parties list when that table is empty. The first request migrates again if the build skipped it. Share `https://<project>.vercel.app`. People create their own groups there. `/board` is the national leaderboard. `/scoring` explains the score in Hebrew. `/admin` is only for the `ADMIN_SECRET` holder.
 
 ## Free tier on election night
 
 The app is meant to run on Vercel Hobby and Neon’s free plan, without a frequent cron.
 
-- Hobby runs a scheduled job about once a day. `vercel.json` sets `0 3 * * *` on `/api/cron/refresh-results`. Freshness comes from on-demand refresh.
+- Hobby runs a scheduled job at most once a day. `vercel.json` sets `0 3 * * *` on `/api/cron/refresh-results`, which is one run a day. Freshness comes from on-demand refresh.
 - Opening the national board (`GET /api/leaderboard`) or a public group board (`GET /api/groups/[code]/standings`) checks a lock on `last_fetch_attempt_at`. The Central Elections Committee is fetched at most once every three minutes, across all visitors.
 - Each candidate URL gets 4 seconds, and the loop stops after 7 seconds, inside Hobby’s function limit of about 10 seconds.
 - Group boards and the national board are computed once per change of results, guesses, bonus weight, or group list, and stored in `board_cache`. Later reads serve that snapshot.
@@ -194,9 +195,9 @@ Auth.js (`next-auth`) offers two passwordless options. Nothing here stores a pas
 
 - **Google.** In [Google Cloud Console](https://console.cloud.google.com/) create a project, configure the consent screen, then Credentials → OAuth client ID → Web application. The redirect URI is `https://<host>/api/auth/callback/google`. For this local port also add `http://localhost:38471/api/auth/callback/google`. Put the client id and secret in `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`.
 - **Email magic link.** Create an API key at [Resend](https://resend.com) and set `AUTH_RESEND_KEY`. Verify a domain and set `EMAIL_FROM` to an address on it. The link works once and expires after an hour. The same email on Google and on the magic link is the same account.
-- Locally, with those keys unset, the Google button is hidden and the magic link is printed on `/signin` after you ask for it. That inbox is not rendered when `NODE_ENV` is `production`.
+- Locally, with those keys unset, the Google button is hidden and the magic link is printed on `/signin` after you ask for it. That inbox is not rendered when `NODE_ENV` is `production`. In production, a missing `AUTH_RESEND_KEY` hides the email form instead of failing the build.
 
-Generate `AUTH_SECRET` with `openssl rand -base64 32`. Set `AUTH_URL` to the public origin so the link in the email points at the site.
+Generate `AUTH_SECRET` with `openssl rand -base64 32`. `AUTH_URL` can stay unset on Vercel.
 
 An account can join several groups. Each group has one bet and one nickname. A legacy cookie bet is claimed when that person signs in on the same device, and the cookie can no longer open it. The account that created a group is its admin. The backup link still works for whoever holds it.
 

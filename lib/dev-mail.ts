@@ -1,9 +1,10 @@
 import type { Db } from "./db";
 import { getDb } from "./db";
+import { authModes } from "./auth-modes";
 import { newId } from "./ids";
 
 export function devInboxEnabled(): boolean {
-  return process.env.NODE_ENV !== "production" && !process.env.AUTH_RESEND_KEY;
+  return authModes().devInbox;
 }
 
 export async function storeDevMail(email: string, url: string, db?: Db) {

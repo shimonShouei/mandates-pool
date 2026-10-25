@@ -45,6 +45,18 @@ export function authRedirect(url: string, baseUrl: string): string {
   return base.origin;
 }
 
+/**
+ * Vercel sets VERCEL_URL to the deployment host, without a scheme.
+ * Used only when AUTH_URL is unset and the incoming host is not a browser host.
+ * A set AUTH_URL wins so a custom domain is not replaced by the deployment host.
+ */
+export function deploymentHost(env: NodeJS.ProcessEnv = process.env): string | null {
+  if (env.AUTH_URL || env.NEXTAUTH_URL) return null;
+  const raw = env.VERCEL_URL?.trim();
+  if (!raw) return null;
+  return publicHost(raw.replace(/^https?:\/\//, ""));
+}
+
 /** A single host[:port] from a forwarded header, or null when it is not usable. */
 export function publicHost(header: string | null): string | null {
   if (!header) return null;

@@ -2,14 +2,24 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createSqliteDb } from "./db";
 import { getSite, updateSite } from "./game";
 import { privateCacheHeaders, PUBLIC_CACHE_CONTROL, publicCacheHeaders } from "./http-cache";
-import { pooledNeonUrl } from "./neon-url";
+import { directDatabaseUrl, migrationDatabaseUrl, migrationDriver, pooledNeonUrl, runtimeDatabaseUrl } from "./neon-url";
 
 describe("free-tier helpers", () => {
-  const previousDirect = process.env.DATABASE_DIRECT;
+  const envKeys = [
+    "DATABASE_DIRECT",
+    "DATABASE_URL",
+    "DATABASE_URL_UNPOOLED",
+    "POSTGRES_URL",
+    "POSTGRES_URL_NON_POOLING",
+  ] as const;
+  const previous = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
 
   afterEach(() => {
-    if (previousDirect == null) delete process.env.DATABASE_DIRECT;
-    else process.env.DATABASE_DIRECT = previousDirect;
+    for (const key of envKeys) {
+      const value = previous[key];
+      if (value == null) delete process.env[key];
+      else process.env[key] = value;
+    }
   });
 
   it("rewrites a Neon host onto the pooler and leaves other databases alone", () => {
@@ -24,6 +34,34 @@ describe("free-tier helpers", () => {
     expect(pooledNeonUrl("not a url")).toBe("not a url");
     process.env.DATABASE_DIRECT = "1";
     expect(pooledNeonUrl(neon)).toBe(neon);
+  });
+
+  it("uses the unpooled Neon URL wherever a direct connection is needed", () => {
+    const direct = "postgres://user:pass@ep-abc.us-east-2.aws.neon.tech/neondb?sslmode=require";
+    const pooled = "postgres://user:pass@ep-abc-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require";
+    delete process.env.DATABASE_DIRECT;
+    process.env.DATABASE_URL = pooled;
+    process.env.DATABASE_URL_UNPOOLED = direct;
+    process.env.POSTGRES_URL_NON_POOLING = "postgres://user:pass@other.example/db";
+    expect(directDatabaseUrl()).toBe(direct);
+    expect(migrationDatabaseUrl()).toBe(direct);
+    expect(runtimeDatabaseUrl()).toBe(pooled);
+    expect(pooledNeonUrl(direct)).toBe(direct);
+    expect(pooledNeonUrl(pooled)).toBe(pooled);
+
+    delete process.env.DATABASE_URL_UNPOOLED;
+    process.env.DATABASE_DIRECT = "1";
+    expect(directDatabaseUrl()).toBe("postgres://user:pass@other.example/db");
+    expect(pooledNeonUrl("postgres://user:pass@ep-plain.us-east-2.aws.neon.tech/neondb")).toBe(
+      "postgres://user:pass@ep-plain.us-east-2.aws.neon.tech/neondb",
+    );
+
+    process.env.DATABASE_DIRECT = direct;
+    delete process.env.POSTGRES_URL_NON_POOLING;
+    expect(directDatabaseUrl()).toBe(direct);
+    expect(migrationDatabaseUrl()).toBe(direct);
+    expect(migrationDriver(direct)).toBe("neon");
+    expect(migrationDriver("postgres://user:pass@127.0.0.1:5432/mandatim")).toBe("pg");
   });
 
   it("caches public boards at the edge and never caches a private bet", () => {

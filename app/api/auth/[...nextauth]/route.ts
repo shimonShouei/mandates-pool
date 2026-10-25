@@ -1,5 +1,5 @@
 import { handlers } from "@/auth";
-import { publicHost } from "@/lib/public-origin";
+import { deploymentHost, publicHost } from "@/lib/public-origin";
 import { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
@@ -13,7 +13,10 @@ export const dynamic = "force-dynamic";
 function withBrowserHost(req: NextRequest): NextRequest {
   const current = new URL(req.url);
   if (current.hostname !== "0.0.0.0" && current.hostname !== "::") return req;
-  const host = publicHost(req.headers.get("x-forwarded-host")) ?? publicHost(req.headers.get("host"));
+  const host =
+    publicHost(req.headers.get("x-forwarded-host")) ??
+    publicHost(req.headers.get("host")) ??
+    deploymentHost();
   if (!host) return req;
   const proto = (req.headers.get("x-forwarded-proto") ?? current.protocol.replace(":", "")).split(",")[0].trim();
   const next = new URL(req.url);
