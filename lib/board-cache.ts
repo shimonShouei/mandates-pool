@@ -1,9 +1,11 @@
+import { aggregateCrowd, type CrowdReport } from "./crowd";
 import type { Db } from "./db";
-import { loadScoreContext } from "./game";
+import { listBlocs, loadScoreContext } from "./game";
 import { computeWinnings, parseStoredSplit, type GroupStake } from "./payout";
 import type { GlobalStanding, GroupStanding, PublicResults, PublicStandingsPayload } from "./public-state";
 import { buildStandings, roundScore, toPublicStandings, type InternalStanding } from "./scoring";
 import { checkSeatVector } from "./seats";
+import { betsLocked, pollsOpenIso } from "./time";
 
 const GLOBAL_ID = "global";
 const LOCK_MS = 15_000;
@@ -24,6 +26,7 @@ export type StoredGroupBoard = {
   knessetNumber: number;
   actual: Record<string, number>;
   parties: PartyMeta[];
+  crowd: CrowdReport;
 };
 
 type StoredGlobal = {
@@ -31,6 +34,7 @@ type StoredGlobal = {
   thresholdBonus: number;
   partyCount: number;
   rows: GlobalStanding[];
+  crowd: CrowdReport;
 };
 
 type CacheRow = { cache_key: string; payload: string; lock_until: string | null };
@@ -45,8 +49,17 @@ export async function readGroupBoard(db: Db, groupId: string): Promise<StoredGro
 export async function readGlobalRows(db: Db): Promise<StoredGlobal> {
   await ensureBoards(db);
   const row = await db.get<{ payload: string }>(`SELECT payload FROM board_cache WHERE id = ?`, [GLOBAL_ID]);
-  if (!row?.payload) return { scoreable: false, thresholdBonus: 0, partyCount: 0, rows: [] };
-  return JSON.parse(row.payload) as StoredGlobal;
+  if (!row?.payload) return { scoreable: false, thresholdBonus: 0, partyCount: 0, rows: [], crowd: emptyCrowd() };
+  const parsed = JSON.parse(row.payload) as StoredGlobal;
+  return { ...parsed, crowd: parsed.crowd ?? emptyCrowd() };
+}
+
+export async function readSiteCrowd(db: Db): Promise<CrowdReport> {
+  return (await readGlobalRows(db)).crowd;
+}
+
+export async function readGroupCrowd(db: Db, groupId: string): Promise<CrowdReport> {
+  return (await readGroupBoard(db, groupId)).crowd ?? emptyCrowd();
 }
 
 export function publicGroupFields(board: StoredGroupBoard): PublicStandingsPayload {
@@ -149,6 +162,7 @@ async function boardKey(db: Db): Promise<string> {
     groups: string | null;
     stake: string | null;
     people: string | number | null;
+    crowd: string | null;
   }>(
     `SELECT
        (SELECT CAST(board_revision AS TEXT) FROM site WHERE id = 'site') AS rev,
@@ -160,9 +174,27 @@ async function boardKey(db: Db): Promise<string> {
           FROM groups) AS groups,
        (SELECT CAST(COALESCE(SUM(stake_agorot), 0) AS TEXT) || '|' || CAST(COALESCE(SUM(LENGTH(payout_split)), 0) AS TEXT)
           FROM groups) AS stake,
-       (SELECT CAST(COUNT(*) AS TEXT) FROM participants) AS people`,
+       (SELECT CAST(COUNT(*) AS TEXT) FROM participants) AS people,
+       (SELECT CAST(COALESCE(crowd_min_bets, 5) AS TEXT) || '|' || CAST(COALESCE(crowd_before_lock, 1) AS TEXT)
+          FROM site WHERE id = 'site') AS crowd`,
   );
-  return `stake|${row?.rev ?? 0}|${row?.bonus ?? ""}|${row?.snap ?? ""}|${row?.preds ?? ""}|${row?.groups ?? ""}|${row?.stake ?? ""}|${row?.people ?? 0}`;
+  const base = `crowd|${row?.rev ?? 0}|${row?.bonus ?? ""}|${row?.snap ?? ""}|${row?.preds ?? ""}|${row?.groups ?? ""}|${row?.stake ?? ""}|${row?.people ?? 0}|${row?.crowd ?? ""}`;
+  return `${base}|${await crowdLockKey(db)}`;
+}
+
+async function crowdLockKey(db: Db): Promise<string> {
+  const site = await db.get<{ crowd_before_lock: number | null }>(
+    `SELECT crowd_before_lock FROM site WHERE id = 'site'`,
+  );
+  if (site?.crowd_before_lock == null || Number(site.crowd_before_lock) === 1) return "all";
+  const groups = await db.all<{ id: string; election_start: string | null; deadline: string | null }>(
+    `SELECT id, election_start, deadline FROM groups`,
+  );
+  return groups
+    .filter((group) => betsLocked(group.election_start || pollsOpenIso(), group.deadline))
+    .map((group) => group.id)
+    .sort()
+    .join(",");
 }
 
 async function computeAll(db: Db): Promise<{ global: StoredGlobal; groups: Map<string, StoredGroupBoard> }> {
@@ -182,7 +214,9 @@ async function computeAll(db: Db): Promise<{ global: StoredGlobal; groups: Map<s
     public_board: number;
     stake_agorot: number | null;
     payout_split: string | null;
-  }>(`SELECT id, name, code, public_board, stake_agorot, payout_split FROM groups`);
+    election_start: string | null;
+    deadline: string | null;
+  }>(`SELECT id, name, code, public_board, stake_agorot, payout_split, election_start, deadline FROM groups`);
   const people = await db.all<{ id: string; group_id: string; display_name: string }>(
     `SELECT id, group_id, display_name FROM participants ORDER BY created_at`,
   );
@@ -201,6 +235,14 @@ async function computeAll(db: Db): Promise<{ global: StoredGlobal; groups: Map<s
     list.push(person);
     byGroup.set(person.group_id, list);
   }
+
+  const blocs = (await listBlocs(db)).map((bloc) => ({ id: bloc.id, name: bloc.name, partyIds: bloc.partyIds }));
+  const actualMap = scoreable ? actual : null;
+  const beforeLock = site.crowdBeforeLock;
+  const minBets = site.crowdMinBets;
+  const siteVectors: number[][] = [];
+  let lockedPublic = 0;
+  let publicGroups = 0;
 
   const groups = new Map<string, StoredGroupBoard>();
   const globalPeople: {
@@ -239,6 +281,22 @@ async function computeAll(db: Db): Promise<{ global: StoredGlobal; groups: Map<s
     });
     const stake: GroupStake | null =
       buyInAgorot > 0 ? { buyInAgorot, potAgorot: payout.potAgorot, split } : null;
+    const vectors = complete.map((person) => partyIds.map((id) => byPerson.get(person.id)?.[id] ?? 0));
+    const locked = betsLocked(group.election_start || pollsOpenIso(), group.deadline);
+    const isPublic = Number(group.public_board) === 1;
+    if (isPublic) {
+      publicGroups += 1;
+      if (locked) lockedPublic += 1;
+      if (beforeLock || locked) siteVectors.push(...vectors);
+    }
+    const crowd = aggregateCrowd({
+      partyIds,
+      vectors,
+      actual: actualMap,
+      blocs,
+      minBets,
+      hiddenBecauseUnlocked: !beforeLock && !locked,
+    });
     groups.set(group.id, {
       participantCount: members.length,
       completeCount: complete.length,
@@ -256,6 +314,7 @@ async function computeAll(db: Db): Promise<{ global: StoredGlobal; groups: Map<s
       knessetNumber: site.knessetNumber,
       actual,
       parties: partyMeta,
+      crowd,
     });
     if (Number(group.public_board) === 1) {
       for (const standing of internal) {
@@ -299,10 +358,23 @@ async function computeAll(db: Db): Promise<{ global: StoredGlobal; groups: Map<s
     };
   });
 
+  const siteCrowd = aggregateCrowd({
+    partyIds,
+    vectors: siteVectors,
+    actual: actualMap,
+    blocs,
+    minBets,
+    hiddenBecauseUnlocked: !beforeLock && publicGroups > 0 && lockedPublic === 0,
+  });
+
   return {
-    global: { scoreable, thresholdBonus: weight, partyCount: partyIds.length, rows },
+    global: { scoreable, thresholdBonus: weight, partyCount: partyIds.length, rows, crowd: siteCrowd },
     groups,
   };
+}
+
+function emptyCrowd(): CrowdReport {
+  return { visible: false, reason: "min", sampleSize: 0, minBets: 5, parties: [], blocs: [] };
 }
 
 function emptyGroup(): StoredGroupBoard {
@@ -320,6 +392,7 @@ function emptyGroup(): StoredGroupBoard {
     knessetNumber: 26,
     actual: {},
     parties: [],
+    crowd: emptyCrowd(),
   };
 }
 

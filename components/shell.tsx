@@ -16,14 +16,22 @@ export function Shell({
           <Link href="/" className="text-sm font-medium tracking-wide text-primary">
             מנדטים
           </Link>
-          <Link href="/board" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
-            הדירוג הארצי
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/crowd" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
+              הקהל
+            </Link>
+            <Link href="/board" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
+              הדירוג הארצי
+            </Link>
+          </div>
         </div>
         {children}
         <footer className="mt-12 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
           <Link href="/scoring" className="underline-offset-4 hover:underline">
             איך מחשבים את הציון
+          </Link>
+          <Link href="/crowd" className="underline-offset-4 hover:underline">
+            חוכמת ההמונים
           </Link>
         </footer>
       </div>

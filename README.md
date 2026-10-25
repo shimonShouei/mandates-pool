@@ -17,6 +17,8 @@
 
 על כל רשימה שניחשו נכון אם היא עוברת את אחוז החסימה מורידים משקל קטן. בניחוש, 4 ומעלה אומר «עוברת» ו-0 עד 3 אומר «לא». בתוצאה, כל מספר מושבים גדול מאפס אומר שהרשימה עברה. ברירת המחדל היא 0.25, ומנהל האתר יכול לשנות את המשקל או לשים 0 כדי לכבות את הבונוס. אותו ציון בקבוצה ובדירוג הארצי. הסבר בעברית פשוטה נמצא ב-`/scoring`. הפונקציות חיות ב-`lib/scoring.ts`.
 
+חוכמת ההמונים ב-`/crowd` ובתוך כל קבוצה מראה רק סיכום: ממוצע, חציון, טווח בין הרבעונים, התפלגות קצרה, ואחוז הניחושים שרשימה עוברת את אחוז החסימה. גושים שמנהל האתר מגדיר מקבלים גם את אחוז הניחושים שמגיעים ל-61 מנדטים. הסיכום מופיע רק אחרי מספר ניחושים שלמים (ברירת מחדל 5, ולפחות 2). אפשר להסתיר אותו עד הנעילה. אחרי התוצאות רואים את התוצאה בפועל מול התחזית. הדירוג הארצי כולל רק קבוצות שלא יצאו ממנו.
+
 מנהל קבוצה יכול לקבוע השתתפות בשקלים וחלוקה (ברירת המחדל: המנצח לוקח הכל, או למשל 60/30/10). תיקו מחלק שווה בשווה את המקומות שהתיקו תופס. בדירוג הקבוצה מופיעים גודל הקופה והסכום שמגיע לכל אחד מהראשונים. זה תצוגה בלבד: האתר לא גובה, לא מחזיק ולא מעביר כסף, והחברים מסדרים את התשלום ביניהם. סימון מי שילם גלוי רק למנהל הקבוצה, ולא מופיע בדירוג הארצי.
 
 ## הרצה מקומית
@@ -129,6 +131,8 @@ Public creation allows 5 new groups per hour per network address. A group name i
 The primary score is the **sum of absolute seat errors**. A seat that moves from one list to another is counted twice, so the boards also show half of that sum as **seats placed wrong**. Lower is better. Euclidean distance breaks ties only. It does not replace the primary score.
 
 A small bonus is subtracted for each party whose pass or fail of the electoral threshold was called correctly. A guess of 4 or more means “passes”; 0–3 means “fails”. Any positive official seat total means the list passed. The default weight is 0.25. The site admin can change it, and 0 turns the bonus off. Group boards and the national board use the same score. A plain-Hebrew explanation is at `/scoring`. The functions live in `lib/scoring.ts`.
+
+The wisdom-of-the-crowd pages at `/crowd` and inside each group show aggregates only: mean, median, interquartile range, a short histogram, and the share of complete bets that have a list passing the threshold. Blocs configured by the site admin also show how often bettors give that bloc 61 seats. Aggregates stay hidden until enough complete bets exist (default 5, and never below 2). The site admin can hide the dashboard until bets lock. After results arrive, the actual total is drawn on the crowd forecast. The site-wide crowd includes only groups that stayed on the national board.
 
 A group admin can set a buy-in in shekels and a payout split (winner takes all by default, or for example 60/30/10). A tie splits the places it occupies evenly. The group board shows the pot and what each top finisher is due. That is display only: the site never collects, holds, or transfers money, and friends settle privately. A paid mark is visible only to the group admin and is not on the national board.
 

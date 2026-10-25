@@ -9,7 +9,10 @@ import {
   refreshOfficialAction,
   removeAgreementAction,
   resumeAutoAction,
+  createBlocAction,
+  deleteBlocAction,
   rotateAdminLinkAction,
+  saveBlocAction,
   savePartyAction,
   updateSiteAction,
   uploadResultsAction,
@@ -23,7 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getDb } from "@/lib/db";
 import { formatPercent, formatWhen } from "@/lib/format";
-import { getSite, listAgreements, listGroups, listParties, loadScoreContext } from "@/lib/game";
+import { getSite, listAgreements, listBlocs, listGroups, listParties, loadScoreContext } from "@/lib/game";
 import { isAdmin } from "@/lib/session";
 
 export default async function AdminPage() {
@@ -48,12 +51,13 @@ export default async function AdminPage() {
   }
 
   const db = await getDb();
-  const [site, parties, agreements, groups, context] = await Promise.all([
+  const [site, parties, agreements, groups, context, blocs] = await Promise.all([
     getSite(db),
     listParties(db),
     listAgreements(db),
     listGroups(db),
     loadScoreContext(db),
+    listBlocs(db),
   ]);
   const results = context.results;
   const seats: Record<string, number> = {};
@@ -106,6 +110,25 @@ export default async function AdminPage() {
               יורד מהציון על כל רשימה שניחשו נכון אם היא עוברת את אחוז החסימה. 0 מכבה את הבונוס. ברירת המחדל 0.25.
             </p>
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="crowd-min">כמה ניחושים שלמים לפני שחוכמת ההמונים מופיעה</Label>
+            <Input
+              id="crowd-min"
+              name="crowdMin"
+              inputMode="numeric"
+              type="number"
+              min={2}
+              max={500}
+              step={1}
+              defaultValue={site.crowdMinBets}
+              className="h-11"
+            />
+            <p className="text-sm text-muted-foreground">לפחות 2. ברירת המחדל 5, כדי שאי אפשר יהיה לשחזר ניחוש בודד.</p>
+          </div>
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" name="crowdBeforeLock" value="1" defaultChecked={site.crowdBeforeLock} className="mt-1" />
+            להציג את חוכמת ההמונים לפני נעילת הניחושים
+          </label>
           <Button type="submit" className="h-11">
             שמירה
           </Button>
@@ -180,6 +203,47 @@ export default async function AdminPage() {
           </div>
         ) : null}
         <ManualForm parties={parties} initialSeats={seats} initialVotes={votes} />
+      </section>
+
+      <section className="mt-6 space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+        <h2 className="font-heading text-2xl">גושים</h2>
+        <p className="text-sm text-muted-foreground">
+          חוכמת ההמונים סוכמת את המושבים בכל גוש, ואת אחוז הניחושים שבהם הגוש מגיע ל-61. רשימה יכולה להיות בכמה גושים.
+        </p>
+        <ActionForm action={createBlocAction} className="flex flex-wrap items-end gap-2">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Label htmlFor="bloc-name">גוש חדש</Label>
+            <Input id="bloc-name" name="name" required minLength={2} maxLength={40} placeholder="למשל גוש הימין" className="h-11" />
+          </div>
+          <Button type="submit" className="h-11">
+            הוספה
+          </Button>
+        </ActionForm>
+        {blocs.map((bloc) => (
+          <div key={bloc.id} className="space-y-3 border-t border-border pt-3">
+            <ActionForm action={saveBlocAction} className="space-y-3">
+              <input type="hidden" name="blocId" value={bloc.id} />
+              <Input name="name" required minLength={2} maxLength={40} defaultValue={bloc.name} className="h-11" />
+              <div className="flex flex-wrap gap-2">
+                {parties.map((party) => (
+                  <label key={party.id} className="flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-sm">
+                    <input type="checkbox" name="partyId" value={party.id} defaultChecked={bloc.partyIds.includes(party.id)} />
+                    {party.name}
+                  </label>
+                ))}
+              </div>
+              <Button type="submit" variant="outline" className="h-10">
+                שמירת הגוש
+              </Button>
+            </ActionForm>
+            <ActionForm action={deleteBlocAction}>
+              <input type="hidden" name="blocId" value={bloc.id} />
+              <Button type="submit" variant="outline" className="h-10">
+                מחיקה
+              </Button>
+            </ActionForm>
+          </div>
+        ))}
       </section>
 
       <section className="mt-6 space-y-3">

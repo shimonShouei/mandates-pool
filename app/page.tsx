@@ -58,6 +58,10 @@ export default function HomePage() {
         <Link href="/scoring" className="text-primary underline-offset-4 hover:underline">
           איך מחשבים את הציון
         </Link>
+        <span className="text-muted-foreground"> · </span>
+        <Link href="/crowd" className="text-primary underline-offset-4 hover:underline">
+          חוכמת ההמונים
+        </Link>
       </p>
 
       <ol className="mt-8 space-y-4">

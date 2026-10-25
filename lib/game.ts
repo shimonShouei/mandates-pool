@@ -4,6 +4,7 @@ import { cleanDisplayName, hashToken, nameKey, newCode, newId, newToken } from "
 import type { AdminParticipant, OwnView, PublicGroupState, PublicResults } from "./public-state";
 import { decideSeats, type PartyRef } from "./results/decide";
 import type { ParsedList, ParsedResults } from "./results/parse-cec";
+import { cleanCrowdMin, DEFAULT_CROWD_MIN } from "./crowd";
 import { parsePayoutSplit, parseStoredSplit } from "./payout";
 import { cleanThresholdBonus, roundScore, scoreGuess, DEFAULT_THRESHOLD_BONUS } from "./scoring";
 import { KNESSET_SEATS, checkSeatVector } from "./seats";
@@ -53,6 +54,8 @@ export type SiteSettings = {
   lastFetchAttemptAt: string | null;
   fetchError: string | null;
   thresholdBonus: number;
+  crowdMinBets: number;
+  crowdBeforeLock: boolean;
 };
 
 type SnapshotRow = {
@@ -212,6 +215,8 @@ export async function getSite(db: Db): Promise<SiteSettings> {
     last_fetch_attempt_at: string | null;
     last_fetch_error: string | null;
     threshold_bonus: number | null;
+    crowd_min_bets: number | null;
+    crowd_before_lock: number | null;
   }>(`SELECT * FROM site WHERE id = 'site'`);
   if (!row) throw new GameError("הגדרות האתר לא נמצאו.");
   return {
@@ -221,12 +226,20 @@ export async function getSite(db: Db): Promise<SiteSettings> {
     lastFetchAttemptAt: row.last_fetch_attempt_at,
     fetchError: row.last_fetch_error,
     thresholdBonus: row.threshold_bonus == null ? DEFAULT_THRESHOLD_BONUS : Number(row.threshold_bonus),
+    crowdMinBets: row.crowd_min_bets == null ? DEFAULT_CROWD_MIN : Number(row.crowd_min_bets),
+    crowdBeforeLock: row.crowd_before_lock == null ? true : Number(row.crowd_before_lock) === 1,
   };
 }
 
 export async function updateSite(
   db: Db,
-  patch: { knessetNumber?: number; preferComputed?: boolean; thresholdBonus?: number },
+  patch: {
+    knessetNumber?: number;
+    preferComputed?: boolean;
+    thresholdBonus?: number;
+    crowdMinBets?: number;
+    crowdBeforeLock?: boolean;
+  },
 ) {
   const site = await getSite(db);
   const knesset = patch.knessetNumber ?? site.knessetNumber;
@@ -241,12 +254,23 @@ export async function updateSite(
       throw new GameError(error instanceof Error ? error.message : "משקל הבונוס לא תקין.");
     }
   }
+  let crowdMin = site.crowdMinBets;
+  if (patch.crowdMinBets != null) {
+    try {
+      crowdMin = cleanCrowdMin(patch.crowdMinBets);
+    } catch (error) {
+      throw new GameError(error instanceof Error ? error.message : "סף הניחושים לא תקין.");
+    }
+  }
+  const crowdBeforeLock = patch.crowdBeforeLock == null ? site.crowdBeforeLock : patch.crowdBeforeLock;
   await db.run(
-    `UPDATE site SET knesset_number = ?, prefer_computed_seats = ?, threshold_bonus = ? WHERE id = 'site'`,
+    `UPDATE site SET knesset_number = ?, prefer_computed_seats = ?, threshold_bonus = ?, crowd_min_bets = ?, crowd_before_lock = ? WHERE id = 'site'`,
     [
       knesset,
       patch.preferComputed == null ? (site.preferComputed ? 1 : 0) : patch.preferComputed ? 1 : 0,
       bonus,
+      crowdMin,
+      crowdBeforeLock ? 1 : 0,
     ],
   );
   if (patch.preferComputed != null) await recomputeCurrent(db);
@@ -268,6 +292,76 @@ export async function rotateGroupAdmin(db: Db, groupId: string) {
   const adminToken = newToken();
   await db.run(`UPDATE groups SET admin_token_hash = ? WHERE id = ?`, [hashToken(adminToken), groupId]);
   return { code: group.code, adminToken };
+}
+
+export type Bloc = { id: string; name: string; sortOrder: number; partyIds: string[] };
+
+function cleanBlocName(name: string): string {
+  const clean = name.normalize("NFKC").replace(/\s+/g, " ").trim();
+  if (/[\u0000-\u001f]/.test(name) || clean.length < 2 || clean.length > 40) {
+    throw new GameError("שם הגוש צריך להיות בין 2 ל-40 תווים.");
+  }
+  return clean;
+}
+
+export async function listBlocs(db: Db): Promise<Bloc[]> {
+  const blocs = await db.all<{ id: string; name: string; sort_order: number }>(
+    `SELECT id, name, sort_order FROM blocs ORDER BY sort_order, name`,
+  );
+  const links = await db.all<{ bloc_id: string; party_id: string }>(`SELECT bloc_id, party_id FROM bloc_parties`);
+  const byBloc = new Map<string, string[]>();
+  for (const link of links) {
+    const list = byBloc.get(link.bloc_id) ?? [];
+    list.push(link.party_id);
+    byBloc.set(link.bloc_id, list);
+  }
+  return blocs.map((bloc) => ({
+    id: bloc.id,
+    name: bloc.name,
+    sortOrder: Number(bloc.sort_order),
+    partyIds: byBloc.get(bloc.id) ?? [],
+  }));
+}
+
+export async function createBloc(db: Db, name: string): Promise<Bloc> {
+  const clean = cleanBlocName(name);
+  const existing = await listBlocs(db);
+  const sort = existing.reduce((max, bloc) => Math.max(max, bloc.sortOrder), -1) + 1;
+  const id = newId();
+  await db.run(`INSERT INTO blocs (id, name, sort_order, created_at) VALUES (?, ?, ?, ?)`, [
+    id,
+    clean,
+    sort,
+    new Date().toISOString(),
+  ]);
+  await touchBoard(db);
+  return { id, name: clean, sortOrder: sort, partyIds: [] };
+}
+
+export async function updateBloc(db: Db, blocId: string, input: { name: string; partyIds: string[] }) {
+  const clean = cleanBlocName(input.name);
+  const parties = await listParties(db);
+  const known = new Set(parties.map((party) => party.id));
+  const partyIds = [...new Set(input.partyIds)];
+  if (partyIds.some((partyId) => !known.has(partyId))) throw new GameError("אחת הרשימות בגוש לא קיימת.");
+  const current = await db.get<{ id: string }>(`SELECT id FROM blocs WHERE id = ?`, [blocId]);
+  if (!current) throw new GameError("הגוש לא נמצא.");
+  await db.transaction(async (tx) => {
+    await tx.run(`UPDATE blocs SET name = ? WHERE id = ?`, [clean, blocId]);
+    await tx.run(`DELETE FROM bloc_parties WHERE bloc_id = ?`, [blocId]);
+    for (const partyId of partyIds) {
+      await tx.run(`INSERT INTO bloc_parties (bloc_id, party_id) VALUES (?, ?)`, [blocId, partyId]);
+    }
+  });
+  await touchBoard(db);
+}
+
+export async function deleteBloc(db: Db, blocId: string) {
+  await db.transaction(async (tx) => {
+    await tx.run(`DELETE FROM bloc_parties WHERE bloc_id = ?`, [blocId]);
+    await tx.run(`DELETE FROM blocs WHERE id = ?`, [blocId]);
+  });
+  await touchBoard(db);
 }
 
 export async function listParties(db: Db): Promise<Party[]> {
@@ -323,6 +417,7 @@ export async function deleteParty(db: Db, partyId: string) {
   }
   await db.transaction(async (tx) => {
     await tx.run(`DELETE FROM surplus_agreements WHERE party_a_id = ? OR party_b_id = ?`, [partyId, partyId]);
+    await tx.run(`DELETE FROM bloc_parties WHERE party_id = ?`, [partyId]);
     await tx.run(`DELETE FROM parties WHERE id = ?`, [partyId]);
   });
   await recomputeCurrent(db);

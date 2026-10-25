@@ -7,7 +7,9 @@ export const SCHEMA_STATEMENTS = [
     last_fetch_attempt_at TEXT,
     last_fetch_error TEXT,
     board_revision INTEGER NOT NULL DEFAULT 0,
-    threshold_bonus REAL NOT NULL DEFAULT 0.25
+    threshold_bonus REAL NOT NULL DEFAULT 0.25,
+    crowd_min_bets INTEGER NOT NULL DEFAULT 5,
+    crowd_before_lock INTEGER NOT NULL DEFAULT 1
   )`,
   `CREATE TABLE IF NOT EXISTS groups (
     id TEXT PRIMARY KEY,
@@ -86,6 +88,17 @@ export const SCHEMA_STATEMENTS = [
     id TEXT PRIMARY KEY,
     ip_hash TEXT NOT NULL,
     created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS blocs (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    sort_order INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS bloc_parties (
+    bloc_id TEXT NOT NULL,
+    party_id TEXT NOT NULL,
+    PRIMARY KEY (bloc_id, party_id)
   )`,
   `CREATE TABLE IF NOT EXISTS board_cache (
     id TEXT PRIMARY KEY,

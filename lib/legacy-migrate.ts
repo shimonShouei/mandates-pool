@@ -39,6 +39,8 @@ export async function migrateLegacySite(db: Db): Promise<void> {
   await db.run(`UPDATE groups SET public_board = 1 WHERE public_board IS NULL`);
   await addColumn(db, `ALTER TABLE site ADD COLUMN board_revision INTEGER NOT NULL DEFAULT 0`);
   await addColumn(db, `ALTER TABLE site ADD COLUMN threshold_bonus REAL NOT NULL DEFAULT 0.25`);
+  await addColumn(db, `ALTER TABLE site ADD COLUMN crowd_min_bets INTEGER NOT NULL DEFAULT 5`);
+  await addColumn(db, `ALTER TABLE site ADD COLUMN crowd_before_lock INTEGER NOT NULL DEFAULT 1`);
   await addColumn(db, `ALTER TABLE groups ADD COLUMN stake_agorot INTEGER NOT NULL DEFAULT 0`);
   await addColumn(db, `ALTER TABLE groups ADD COLUMN payout_split TEXT NOT NULL DEFAULT '100'`);
   await addColumn(db, `ALTER TABLE participants ADD COLUMN paid INTEGER NOT NULL DEFAULT 0`);

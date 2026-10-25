@@ -9,6 +9,8 @@ import {
   GameError,
   addAgreement,
   addParty,
+  createBloc,
+  deleteBloc,
   applyParsedResults,
   clearOverride,
   deleteParticipation,
@@ -24,6 +26,7 @@ import {
   saveManualResults,
   savePrediction,
   setPaidAliases,
+  updateBloc,
   updateGroupAsAdmin,
   updateParty,
   updateSite,
@@ -80,10 +83,12 @@ async function requireGroupAdmin(groupId: string) {
 function paths(code?: string) {
   revalidatePath("/", "layout");
   revalidatePath("/board");
+  revalidatePath("/crowd");
   revalidatePath("/admin");
   if (code) {
     revalidatePath(`/g/${code}`);
     revalidatePath(`/g/${code}/manage`);
+    revalidatePath(`/g/${code}/crowd`);
   }
 }
 
@@ -261,11 +266,53 @@ export async function updateSiteAction(formData: FormData): Promise<ActionResult
     const db = await getDb();
     const knesset = Number(formData.get("knesset") || 0);
     const bonusRaw = String(formData.get("thresholdBonus") ?? "").trim();
+    const crowdRaw = String(formData.get("crowdMin") ?? "").trim();
     await updateSite(db, {
       knessetNumber: knesset,
       preferComputed: formData.get("preferComputed") === "1",
       thresholdBonus: bonusRaw === "" ? undefined : Number(bonusRaw),
+      crowdMinBets: crowdRaw === "" ? undefined : Number(crowdRaw),
+      crowdBeforeLock: formData.get("crowdBeforeLock") === "1",
     });
+    paths();
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function createBlocAction(formData: FormData): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+    const db = await getDb();
+    await createBloc(db, String(formData.get("name") || ""));
+    paths();
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function saveBlocAction(formData: FormData): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+    const db = await getDb();
+    await updateBloc(db, String(formData.get("blocId") || ""), {
+      name: String(formData.get("name") || ""),
+      partyIds: formData.getAll("partyId").map((value) => String(value)),
+    });
+    paths();
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function deleteBlocAction(formData: FormData): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+    const db = await getDb();
+    await deleteBloc(db, String(formData.get("blocId") || ""));
     paths();
     return { ok: true };
   } catch (error) {

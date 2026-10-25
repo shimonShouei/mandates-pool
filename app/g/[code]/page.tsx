@@ -57,6 +57,9 @@ export default async function GroupPage({ params }: { params: Promise<{ code: st
           <Link href="/board" className="text-primary underline-offset-4 hover:underline">
             הדירוג הארצי
           </Link>
+          <Link href={`/g/${group.code}/crowd`} className="text-primary underline-offset-4 hover:underline">
+            הקהל בקבוצה
+          </Link>
           {managing ? (
             <Link href={`/g/${group.code}/manage`} className="text-primary underline-offset-4 hover:underline">
               ניהול הקבוצה
