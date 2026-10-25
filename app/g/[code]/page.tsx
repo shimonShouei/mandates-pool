@@ -2,11 +2,11 @@ import Link from "next/link";
 import { BetForm } from "@/components/bet-form";
 import { CopyCode } from "@/components/copy-code";
 import { JoinForm } from "@/components/join-form";
+import { LockCountdown } from "@/components/lock-status";
 import { ResultsBoard } from "@/components/results-board";
 import { Shell } from "@/components/shell";
 import { Badge } from "@/components/ui/badge";
 import { getDb } from "@/lib/db";
-import { formatWhen } from "@/lib/format";
 import { getGroupByCode, getPublicState, listParties } from "@/lib/game";
 import { readToken } from "@/lib/session";
 
@@ -35,22 +35,22 @@ export default async function GroupPage({ params }: { params: Promise<{ code: st
   for (const party of parties) {
     initial[party.id] = state.own?.prediction.find((row) => row.partyId === party.id)?.seats ?? 0;
   }
+  const serverNow = Date.now();
 
   return (
     <Shell>
       <header className="mt-6 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">כנסת ה-{group.knessetNumber}</Badge>
-          {state.group.locked ? <Badge variant="outline">הניחושים נעולים</Badge> : null}
+          {state.group.locked ? <Badge>הניחושים נעולים</Badge> : <Badge variant="outline">פתוח עד הנעילה</Badge>}
         </div>
         <h1 className="font-heading text-5xl leading-none">{group.name}</h1>
-        <p className="text-sm text-muted-foreground">
-          {group.deadline
-            ? state.group.locked
-              ? `ננעל ב-${formatWhen(group.deadline)}`
-              : `נעילה ב-${formatWhen(group.deadline)}`
-            : "עדיין אין שעת נעילה. אפשר לשנות את הניחוש עד שהמנהל יקבע אותה."}
-        </p>
+        <LockCountdown
+          lockAt={state.group.lockAt}
+          locked={state.group.locked}
+          reason={state.group.lockReason}
+          serverNow={serverNow}
+        />
         <CopyCode code={group.code} />
       </header>
 
@@ -67,9 +67,15 @@ export default async function GroupPage({ params }: { params: Promise<{ code: st
             }))}
             initial={initial}
             locked={state.group.locked}
+            lockAt={state.group.lockAt}
+            serverNow={serverNow}
           />
+        ) : state.group.locked ? (
+          <p className="rounded-xl bg-card px-4 py-3 text-sm ring-1 ring-foreground/10">
+            ההצטרפות נסגרה. הניחושים נעולים.
+          </p>
         ) : (
-          <JoinForm code={group.code} />
+          <JoinForm code={group.code} lockAt={state.group.lockAt} locked={state.group.locked} serverNow={serverNow} />
         )}
       </div>
 

@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { leaveGroup, saveBet } from "@/app/actions";
+import { useLocked } from "@/components/lock-status";
 import { Button } from "@/components/ui/button";
 import { KNESSET_SEATS, seatWarningForParty } from "@/lib/seats";
 
@@ -19,14 +20,20 @@ export function BetForm({
   parties,
   initial,
   locked,
+  lockAt,
+  serverNow,
 }: {
   code: string;
   alias: string;
   parties: BetParty[];
   initial: Record<string, number>;
   locked: boolean;
+  lockAt: string;
+  serverNow: number;
 }) {
   const router = useRouter();
+  const lock = useLocked(lockAt, locked, serverNow);
+  const closed = lock.locked;
   const [seats, setSeats] = useState<Record<string, number>>(initial);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -57,6 +64,7 @@ export function BetForm({
     <form
       className="space-y-4"
       action={(formData) => {
+        if (closed) return;
         formData.set("seats", JSON.stringify(seats));
         startTransition(async () => {
           const result = await saveBet(formData);
@@ -118,7 +126,7 @@ export function BetForm({
                   <button
                     type="button"
                     className="size-11 rounded-lg border border-border text-lg disabled:opacity-40"
-                    disabled={locked || value <= 0}
+                    disabled={closed || value <= 0}
                     onClick={() => update(party.id, value - 1)}
                     aria-label={`פחות ל${party.name}`}
                   >
@@ -126,9 +134,9 @@ export function BetForm({
                   </button>
                   <input
                     inputMode="numeric"
-                    disabled={locked}
                     aria-label={party.name}
                     className="h-11 w-14 rounded-lg border border-input bg-transparent text-center text-base tabular-nums outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                    disabled={closed}
                     value={value}
                     onChange={(event) => {
                       const next = event.target.value.trim();
@@ -143,7 +151,7 @@ export function BetForm({
                   <button
                     type="button"
                     className="size-11 rounded-lg border border-border text-lg disabled:opacity-40"
-                    disabled={locked}
+                    disabled={closed}
                     onClick={() => update(party.id, value + 1)}
                     aria-label={`עוד ל${party.name}`}
                   >
@@ -157,7 +165,7 @@ export function BetForm({
         })}
       </ul>
 
-      {partyWarnings.length > 0 && !locked ? (
+      {partyWarnings.length > 0 && !closed ? (
         <p className="text-sm text-amber-900">אפשר לשמור גם עם האזהרה. החישוב הסופי לא ייתן 1–3 מנדטים.</p>
       ) : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -176,7 +184,7 @@ export function BetForm({
               {total} / {KNESSET_SEATS}
             </div>
           </div>
-          {locked ? (
+          {closed ? (
             <p className="text-sm font-medium">הניחושים נעולים</p>
           ) : (
             <Button type="submit" className="h-11 px-5" disabled={pending || total !== KNESSET_SEATS}>
@@ -186,7 +194,7 @@ export function BetForm({
         </div>
       </div>
 
-      <Leave code={code} alias={alias} />
+      {closed ? null : <Leave code={code} alias={alias} />}
     </form>
   );
 }

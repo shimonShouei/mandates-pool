@@ -6,7 +6,7 @@ import { decideSeats, type PartyRef } from "./results/decide";
 import type { ParsedList, ParsedResults } from "./results/parse-cec";
 import { buildStandings, roundScore, toPublicStandings } from "./scoring";
 import { KNESSET_SEATS, checkSeatVector } from "./seats";
-import { isLocked } from "./time";
+import { betsLocked, isLocked, lockSchedule, pollsOpenIso } from "./time";
 
 export class GameError extends Error {
   constructor(message: string) {
@@ -38,6 +38,7 @@ type GroupRow = {
   name: string;
   code: string;
   deadline: string | null;
+  election_start: string | null;
   knesset_number: number;
   prefer_computed_seats: number;
   results_override: number;
@@ -76,11 +77,18 @@ type ResultRow = {
   mapped: number;
 };
 
-export async function createGroup(db: Db, name: string, deadlineIso: string | null = null) {
+export async function createGroup(
+  db: Db,
+  name: string,
+  deadlineIso: string | null = null,
+  electionStartIso: string | null = null,
+) {
   const clean = name.normalize("NFKC").replace(/\s+/g, " ").trim();
   if (clean.length < 1 || clean.length > 60) {
     throw new GameError("שם הקבוצה צריך להיות בין 1 ל-60 תווים.");
   }
+  const electionStart = electionStartIso ?? pollsOpenIso();
+  if (Number.isNaN(Date.parse(electionStart))) throw new GameError("שעת פתיחת הקלפיות לא תקינה.");
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const id = newId();
     const code = newCode();
@@ -88,9 +96,9 @@ export async function createGroup(db: Db, name: string, deadlineIso: string | nu
     try {
       await db.transaction(async (tx) => {
         await tx.run(
-          `INSERT INTO groups (id, name, code, deadline, knesset_number, prefer_computed_seats, results_override, created_at)
-           VALUES (?, ?, ?, ?, 26, 0, 0, ?)`,
-          [id, clean, code, deadlineIso, now],
+          `INSERT INTO groups (id, name, code, deadline, election_start, knesset_number, prefer_computed_seats, results_override, created_at)
+           VALUES (?, ?, ?, ?, ?, 26, 0, 0, ?)`,
+          [id, clean, code, deadlineIso, electionStart, now],
         );
         for (const [index, party] of SEED_PARTIES.entries()) {
           await tx.run(
@@ -127,7 +135,13 @@ export async function getGroupById(db: Db, id: string) {
 export async function updateGroup(
   db: Db,
   groupId: string,
-  patch: { name?: string; deadline?: string | null; knessetNumber?: number; preferComputed?: boolean },
+  patch: {
+    name?: string;
+    deadline?: string | null;
+    electionStart?: string;
+    knessetNumber?: number;
+    preferComputed?: boolean;
+  },
 ) {
   const group = await mustGroup(db, groupId);
   const name = patch.name == null ? group.name : patch.name.normalize("NFKC").replace(/\s+/g, " ").trim();
@@ -136,11 +150,14 @@ export async function updateGroup(
   if (!Number.isInteger(knesset) || knesset < 20 || knesset > 40) {
     throw new GameError("מספר הכנסת לא נראה נכון.");
   }
+  const electionStart = patch.electionStart ?? group.electionStart;
+  if (Number.isNaN(Date.parse(electionStart))) throw new GameError("שעת פתיחת הקלפיות לא תקינה.");
   await db.run(
-    `UPDATE groups SET name = ?, deadline = ?, knesset_number = ?, prefer_computed_seats = ? WHERE id = ?`,
+    `UPDATE groups SET name = ?, deadline = ?, election_start = ?, knesset_number = ?, prefer_computed_seats = ? WHERE id = ?`,
     [
       name,
       patch.deadline === undefined ? group.deadline : patch.deadline,
+      electionStart,
       knesset,
       patch.preferComputed == null ? (group.preferComputed ? 1 : 0) : patch.preferComputed ? 1 : 0,
       groupId,
@@ -275,11 +292,17 @@ export async function removeAgreement(db: Db, groupId: string, agreementId: stri
   await recomputeCurrent(db, groupId);
 }
 
-export async function joinGroup(db: Db, groupId: string, displayName: string) {
+const LOCKED_MESSAGE = "הניחושים נעולים. אי אפשר להצטרף או לשנות אחרי הנעילה.";
+
+function assertBetsOpen(group: { electionStart: string; deadline: string | null }, now: number) {
+  if (betsLocked(group.electionStart, group.deadline, now)) throw new GameError(LOCKED_MESSAGE);
+}
+
+export async function joinGroup(db: Db, groupId: string, displayName: string, now = Date.now()) {
   const alias = cleanDisplayName(displayName);
   if (!alias) throw new GameError("בחרו כינוי באורך 1 עד 24 תווים.");
   const group = await mustGroup(db, groupId);
-  if (isLocked(group.deadline)) throw new GameError("ההצטרפות נעולה. שעת הנעילה עברה.");
+  assertBetsOpen(group, now);
   const token = newToken();
   const id = newId();
   try {
@@ -307,11 +330,17 @@ export async function participantFromToken(db: Db, groupId: string, token: strin
   );
 }
 
-export async function savePrediction(db: Db, groupId: string, token: string, rawSeats: Record<string, unknown>) {
+export async function savePrediction(
+  db: Db,
+  groupId: string,
+  token: string,
+  rawSeats: Record<string, unknown>,
+  now = Date.now(),
+) {
   const participant = await participantFromToken(db, groupId, token);
   if (!participant) throw new GameError("לא מצאנו ניחוש שמור בדפדפן הזה. הצטרפו עם כינוי.");
   const group = await mustGroup(db, groupId);
-  if (isLocked(group.deadline)) throw new GameError("הניחושים נעולים. אי אפשר לשנות אחרי שעת הנעילה.");
+  assertBetsOpen(group, now);
   const parties = await listParties(db, groupId);
   const known = new Set(parties.map((party) => party.id));
   for (const key of Object.keys(rawSeats)) {
@@ -325,22 +354,24 @@ export async function savePrediction(db: Db, groupId: string, token: string, raw
   }
   const check = checkSeatVector(parties.map((party) => seats[party.id]));
   if (!check.ok) throw new GameError(check.error);
-  const now = new Date().toISOString();
+  const savedAt = new Date(now).toISOString();
   await db.transaction(async (tx) => {
     await tx.run(`DELETE FROM predictions WHERE participant_id = ?`, [participant.id]);
     for (const party of parties) {
       await tx.run(
         `INSERT INTO predictions (participant_id, party_id, seats, updated_at) VALUES (?, ?, ?, ?)`,
-        [participant.id, party.id, seats[party.id], now],
+        [participant.id, party.id, seats[party.id], savedAt],
       );
     }
   });
   return { warnings: check.warnings };
 }
 
-export async function deleteParticipation(db: Db, groupId: string, token: string) {
+export async function deleteParticipation(db: Db, groupId: string, token: string, now = Date.now()) {
   const participant = await participantFromToken(db, groupId, token);
   if (!participant) throw new GameError("לא מצאנו משתתף בדפדפן הזה.");
+  const group = await mustGroup(db, groupId);
+  assertBetsOpen(group, now);
   await db.transaction(async (tx) => {
     await tx.run(`DELETE FROM predictions WHERE participant_id = ?`, [participant.id]);
     await tx.run(`DELETE FROM participants WHERE id = ?`, [participant.id]);
@@ -606,6 +637,8 @@ export async function getPublicState(db: Db, groupId: string, token: string | nu
       }
     : null;
 
+  const schedule = lockSchedule(group.electionStart, group.deadline);
+  const locked = isLocked(schedule.lockAt);
   let own: OwnView | null = null;
   if (you) {
     const predicted = byParticipant.get(you.id) ?? {};
@@ -615,7 +648,7 @@ export async function getPublicState(db: Db, groupId: string, token: string | nu
     own = {
       alias: you.display_name,
       submitted,
-      locked: isLocked(group.deadline),
+      locked,
       total,
       prediction: parties.map((party) => ({
         partyId: party.id,
@@ -649,7 +682,10 @@ export async function getPublicState(db: Db, groupId: string, token: string | nu
       name: group.name,
       code: group.code,
       deadline: group.deadline,
-      locked: isLocked(group.deadline),
+      electionStart: group.electionStart,
+      lockAt: schedule.lockAt,
+      lockReason: schedule.reason,
+      locked,
       knessetNumber: group.knessetNumber,
     },
     participantCount: participants.length,
@@ -769,6 +805,7 @@ function presentGroup(row: GroupRow) {
     name: row.name,
     code: row.code,
     deadline: row.deadline,
+    electionStart: row.election_start || pollsOpenIso(),
     knessetNumber: Number(row.knesset_number),
     preferComputed: Number(row.prefer_computed_seats) === 1,
     resultsOverride: Number(row.results_override) === 1,

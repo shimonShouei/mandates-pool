@@ -25,7 +25,7 @@ import { getDb } from "@/lib/db";
 import { formatPercent, formatWhen } from "@/lib/format";
 import { getGroupByCode, getPublicState, listAgreements, listParticipantsAdmin, listParties } from "@/lib/game";
 import { isAdmin } from "@/lib/session";
-import { isoToJerusalemLocal } from "@/lib/time";
+import { isoToJerusalemLocal, lockSchedule } from "@/lib/time";
 
 export default async function AdminGroupPage({ params }: { params: Promise<{ code: string }> }) {
   if (!(await isAdmin())) redirect("/admin");
@@ -75,7 +75,18 @@ export default async function AdminGroupPage({ params }: { params: Promise<{ cod
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="gdeadline">שעת נעילה, שעון ישראל</Label>
+              <Label htmlFor="electionStart">פתיחת הקלפיות, שעון ישראל</Label>
+              <Input
+                id="electionStart"
+                name="electionStart"
+                type="datetime-local"
+                required
+                className="h-11"
+                defaultValue={isoToJerusalemLocal(group.electionStart)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="gdeadline">נעילה מוקדמת, שעון ישראל (רשות)</Label>
               <Input
                 id="gdeadline"
                 name="deadline"
@@ -84,14 +95,17 @@ export default async function AdminGroupPage({ params }: { params: Promise<{ cod
                 defaultValue={group.deadline ? isoToJerusalemLocal(group.deadline) : ""}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="knesset">מספר הכנסת למשיכת התוצאות</Label>
-              <Input id="knesset" name="knesset" inputMode="numeric" defaultValue={group.knessetNumber} className="h-11" />
-            </div>
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="knesset">מספר הכנסת למשיכת התוצאות</Label>
+            <Input id="knesset" name="knesset" inputMode="numeric" defaultValue={group.knessetNumber} className="h-11" />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            הניחושים ננעלים בפתיחת הקלפיות. נעילה מוקדמת יכולה רק להקדים את זה.
+          </p>
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" name="clearDeadline" value="1" className="mt-1" />
-            בלי שעת נעילה
+            בלי נעילה מוקדמת
           </label>
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" name="preferComputed" value="1" defaultChecked={group.preferComputed} className="mt-1" />
@@ -108,7 +122,7 @@ export default async function AdminGroupPage({ params }: { params: Promise<{ cod
           </Button>
         </ActionForm>
         <p className="text-sm text-muted-foreground">
-          {group.deadline ? `נעילה: ${formatWhen(group.deadline)}` : "אין שעת נעילה."}
+          {describeLock(group.electionStart, group.deadline)}
           {group.resultsOverride ? " עקיפה ידנית פעילה, והרענון האוטומטי מושהה." : " הרענון האוטומטי פעיל."}
         </p>
       </section>
@@ -322,4 +336,16 @@ export default async function AdminGroupPage({ params }: { params: Promise<{ cod
       </section>
     </Shell>
   );
+}
+
+function describeLock(electionStart: string, deadline: string | null) {
+  const schedule = lockSchedule(electionStart, deadline);
+  const when = formatWhen(schedule.lockAt);
+  const ignored =
+    deadline && Date.parse(deadline) >= Date.parse(electionStart)
+      ? " שעת הנעילה המוקדמת אינה מאריכה מעבר לפתיחת הקלפיות."
+      : "";
+  return schedule.reason === "manual"
+    ? `נעילה בפועל: ${when}, נעילה מוקדמת.`
+    : `נעילה בפועל: ${when}, פתיחת הקלפיות.${ignored}`;
 }

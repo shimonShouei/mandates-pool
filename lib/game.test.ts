@@ -2,15 +2,20 @@ import { describe, expect, it } from "vitest";
 import { createSqliteDb } from "./db";
 import {
   createGroup,
+  deleteParticipation,
   getPublicState,
   joinGroup,
   listParticipantsAdmin,
   listParties,
   saveManualResults,
   savePrediction,
+  updateGroup,
 } from "./game";
 import { ensureFreshResults } from "./refresh";
 import type { ParsedResults } from "./results/parse-cec";
+import { pollsOpenIso } from "./time";
+
+const OPEN_UNTIL = pollsOpenIso("2099-01-01");
 
 async function memory() {
   return createSqliteDb(":memory:");
@@ -19,7 +24,7 @@ async function memory() {
 describe("pool privacy and winner", () => {
   it("ranks the closest guess and never returns anyone else's seats", async () => {
     const db = await memory();
-    const group = await createGroup(db, "חברים של שמעון");
+    const group = await createGroup(db, "חברים של שמעון", null, OPEN_UNTIL);
     const parties = await listParties(db, group.id);
     const [a, b, c] = parties;
     const others = parties.slice(3);
@@ -99,7 +104,7 @@ describe("pool privacy and winner", () => {
     const db = await memory();
     const group = await createGroup(db, "נעילה", "2020-01-01T00:00:00.000Z");
     await expect(joinGroup(db, group.id, "מאוחר")).rejects.toThrow(/נעול/);
-    const open = await createGroup(db, "פתוח");
+    const open = await createGroup(db, "פתוח", null, OPEN_UNTIL);
     const person = await joinGroup(db, open.id, "שחר");
     const parties = await listParties(db, open.id);
     const seats: Record<string, number> = {};
@@ -107,12 +112,42 @@ describe("pool privacy and winner", () => {
       seats[party.id] = index === 0 ? 120 : 0;
     });
     await savePrediction(db, open.id, person.token, seats);
-    const { updateGroup } = await import("./game");
     await updateGroup(db, open.id, { deadline: "2020-01-01T00:00:00.000Z" });
     await expect(savePrediction(db, open.id, person.token, seats)).rejects.toThrow(/נעול/);
     const state = await getPublicState(db, open.id, null);
     expect(state.group.locked).toBe(true);
     expect(JSON.stringify(state)).not.toContain('"seats":120');
+    await expect(deleteParticipation(db, open.id, person.token)).rejects.toThrow(/נעול/);
+  });
+
+  it("rejects a new bet at polls opening and keeps an earlier manual lock", async () => {
+    const db = await memory();
+    const start = pollsOpenIso("2026-10-27");
+    const group = await createGroup(db, "קלפיות", null, start);
+    const parties = await listParties(db, group.id);
+    const seats: Record<string, number> = {};
+    parties.forEach((party, index) => {
+      seats[party.id] = index === 0 ? 120 : 0;
+    });
+    const at = Date.parse(start);
+    const person = await joinGroup(db, group.id, "דנה", at - 1);
+    await savePrediction(db, group.id, person.token, seats, at - 1);
+    await expect(savePrediction(db, group.id, person.token, seats, at)).rejects.toThrow(/נעול/);
+    await expect(joinGroup(db, group.id, "אחר", at)).rejects.toThrow(/נעול/);
+    await expect(deleteParticipation(db, group.id, person.token, at)).rejects.toThrow(/נעול/);
+
+    const early = new Date(at - 60 * 60 * 1000).toISOString();
+    await updateGroup(db, group.id, { deadline: early });
+    await savePrediction(db, group.id, person.token, seats, Date.parse(early) - 1);
+    await expect(savePrediction(db, group.id, person.token, seats, Date.parse(early))).rejects.toThrow(/נעול/);
+
+    const later = new Date(at + 24 * 60 * 60 * 1000).toISOString();
+    await updateGroup(db, group.id, { deadline: later });
+    await savePrediction(db, group.id, person.token, seats, at - 1);
+    await expect(joinGroup(db, group.id, "אחרי", at)).rejects.toThrow(/נעול/);
+    const state = await getPublicState(db, group.id, person.token);
+    expect(state.group.lockAt).toBe(start);
+    expect(state.group.lockReason).toBe("election");
   });
 
   it("refreshes official results on a timer and skips a manual override", async () => {

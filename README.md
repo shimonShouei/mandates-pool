@@ -9,7 +9,7 @@
 1. המנהל נכנס עם `ADMIN_SECRET`, יוצר קבוצה, ומעתיק את הקישור.
 2. כל חבר נכנס עם הקישור ובוחר כינוי (אפשר שם בדוי). אין סיסמה. הדפדפן שומר אסימון, ורק האסימון הזה יכול לערוך את הניחוש.
 3. מחלקים מספרים שלמים שסכומם 120. ערך בין 1 ל-3 מקבל אזהרה: אחוז החסימה הוא 3.25%, ורשימה שלא עוברת אותו מקבלת 0.
-4. המנהל קובע שעת נעילה. אחריה אי אפשר לשנות ניחוש.
+4. הניחושים ננעלים אוטומטית ב-07:00 שעון ישראל ביום הבחירות (27 באוקטובר 2026 לקבוצה חדשה), כשהקלפיות נפתחות. המנהל יכול להקדים את הנעילה, לא לאחר אותה. אחרי הנעילה אי אפשר להצטרף או לשנות ניחוש.
 5. התוצאות נמשכות מאתר ועדת הבחירות המרכזית. אם המשיכה נכשלת, מעלים את דף התוצאות מהדפדפן או מזינים מנדטים ידנית.
 6. הדירוג הציבורי מציג רק כינוי, מקום וציון. אף אחד, כולל המנהל, לא רואה את חלוקת המושבים של מישהו אחר. את הפער מול כל מפלגה רואים רק בניחוש שלכם.
 
@@ -96,7 +96,7 @@ A Hebrew, right-to-left pool for predicting how the 120 Knesset seats will split
 
 Participants join with an invite link and a nickname. A random token in an httpOnly cookie is the only credential, and it can edit only that browser's guess. Guesses are whole numbers totaling 120. Values from 1 to 3 warn that they cannot occur under the 3.25% threshold.
 
-After the admin's deadline, guesses lock. The public leaderboard shows nickname, rank, and score only. Per-party guesses and per-party diffs are returned solely to the participant who owns the token. The admin participant list shows whether a guess totals 120, not the numbers. `GET /api/groups/[code]/leaderboard` is `Cache-Control: private, no-store` and is covered by tests that a caller's payload does not contain anyone else's seat vector.
+Guesses lock automatically at 07:00 Asia/Jerusalem on election day, when polling stations open. A new group defaults to 27 October 2026. The admin can set an earlier lock, and cannot keep guesses open past polls opening. The clock follows Israel daylight saving time. After the lock, joining and editing are rejected on the server. The public leaderboard shows nickname, rank, and score only. Per-party guesses and per-party diffs are returned solely to the participant who owns the token. The admin participant list shows whether a guess totals 120, not the numbers. `GET /api/groups/[code]/leaderboard` is `Cache-Control: private, no-store` and is covered by tests that a caller's payload does not contain anyone else's seat vector.
 
 The winner is the lowest **Euclidean distance** between the guess vector and the actual vector. The leaderboard also shows the **sum of absolute errors**, and can be sorted by it. Both functions are isolated in `lib/scoring.ts`.
 

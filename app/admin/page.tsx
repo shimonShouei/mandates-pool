@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { getDb } from "@/lib/db";
 import { listGroups } from "@/lib/game";
 import { isAdmin } from "@/lib/session";
+import { DEFAULT_ELECTION_DAY, POLLS_OPEN_LOCAL_TIME } from "@/lib/time";
 
 export default async function AdminPage() {
   if (!(await isAdmin())) {
@@ -48,7 +49,19 @@ export default async function AdminPage() {
           <Input id="name" name="name" defaultValue="ניחוש הכנסת ה-26" className="h-11" />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="deadline">שעת נעילה (שעון ישראל, אפשר להשאיר ריק)</Label>
+          <Label htmlFor="electionStart">פתיחת הקלפיות (שעון ישראל)</Label>
+          <Input
+            id="electionStart"
+            name="electionStart"
+            type="datetime-local"
+            required
+            defaultValue={`${DEFAULT_ELECTION_DAY}T${POLLS_OPEN_LOCAL_TIME}`}
+            className="h-11"
+          />
+          <p className="text-sm text-muted-foreground">הניחושים ננעלים אוטומטית בשעה הזו. ברירת המחדל היא 07:00 ביום הבחירות.</p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="deadline">נעילה מוקדמת (רשות, שעון ישראל)</Label>
           <Input id="deadline" name="deadline" type="datetime-local" className="h-11" />
         </div>
         <Button type="submit" className="h-11">

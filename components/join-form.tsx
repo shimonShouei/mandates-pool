@@ -3,14 +3,29 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { joinAction } from "@/app/actions";
+import { useLocked } from "@/components/lock-status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export function JoinForm({ code }: { code: string }) {
+export function JoinForm({
+  code,
+  lockAt,
+  locked,
+  serverNow,
+}: {
+  code: string;
+  lockAt: string;
+  locked: boolean;
+  serverNow: number;
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const lock = useLocked(lockAt, locked, serverNow);
+  if (lock.locked) {
+    return <p className="rounded-xl bg-card px-4 py-3 text-sm ring-1 ring-foreground/10">ההצטרפות נסגרה. הניחושים נעולים.</p>;
+  }
 
   return (
     <form

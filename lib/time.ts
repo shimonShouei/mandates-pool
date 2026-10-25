@@ -59,3 +59,33 @@ export function isLocked(deadline: string | null, now = Date.now()): boolean {
   if (Number.isNaN(time)) return false;
   return now >= time;
 }
+
+/** 26th Knesset election day. Polls open at 07:00 Asia/Jerusalem. */
+export const DEFAULT_ELECTION_DAY = "2026-10-27";
+export const POLLS_OPEN_LOCAL_TIME = "07:00";
+
+export function pollsOpenIso(day = DEFAULT_ELECTION_DAY, time = POLLS_OPEN_LOCAL_TIME): string {
+  const iso = jerusalemLocalToIso(`${day}T${time}`);
+  if (!iso) throw new Error(`Invalid election start ${day}T${time}`);
+  return iso;
+}
+
+export type LockReason = "election" | "manual";
+
+/**
+ * Bets close at polls opening. An admin deadline locks earlier when it is
+ * before that instant, and cannot keep bets open after it.
+ */
+export function lockSchedule(electionStart: string, deadline: string | null): { lockAt: string; reason: LockReason } {
+  const electionMs = Date.parse(electionStart);
+  if (Number.isNaN(electionMs)) throw new Error("Invalid election start");
+  const manualMs = deadline ? Date.parse(deadline) : Number.NaN;
+  if (!Number.isNaN(manualMs) && manualMs < electionMs) {
+    return { lockAt: new Date(manualMs).toISOString(), reason: "manual" };
+  }
+  return { lockAt: new Date(electionMs).toISOString(), reason: "election" };
+}
+
+export function betsLocked(electionStart: string, deadline: string | null, now = Date.now()): boolean {
+  return isLocked(lockSchedule(electionStart, deadline).lockAt, now);
+}

@@ -1,4 +1,5 @@
 import type { PublicStanding } from "./scoring";
+import type { LockReason } from "./time";
 
 export type { PublicStanding };
 
@@ -68,6 +69,9 @@ export type PublicGroupState = {
     name: string;
     code: string;
     deadline: string | null;
+    electionStart: string;
+    lockAt: string;
+    lockReason: LockReason;
     locked: boolean;
     knessetNumber: number;
   };

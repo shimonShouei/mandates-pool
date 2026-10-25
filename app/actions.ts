@@ -27,7 +27,7 @@ import {
 import { parseCecPayload } from "@/lib/results/parse-cec";
 import { ensureFreshResults } from "@/lib/refresh";
 import { clearAdminCookie, clearToken, isAdmin, readToken, setAdminCookie, writeToken } from "@/lib/session";
-import { jerusalemLocalToIso } from "@/lib/time";
+import { jerusalemLocalToIso, pollsOpenIso } from "@/lib/time";
 
 export type ActionResult = { ok: true; warnings?: string[] } | { ok: false; error: string };
 
@@ -135,7 +135,10 @@ export async function createGroupAction(formData: FormData): Promise<ActionResul
     const deadlineRaw = String(formData.get("deadline") || "");
     const deadline = deadlineRaw ? jerusalemLocalToIso(deadlineRaw) : null;
     if (deadlineRaw && !deadline) return { ok: false, error: "שעת הנעילה לא תקינה." };
-    const group = await createGroup(db, name, deadline);
+    const electionRaw = String(formData.get("electionStart") || "");
+    const electionStart = electionRaw ? jerusalemLocalToIso(electionRaw) : pollsOpenIso();
+    if (!electionStart) return { ok: false, error: "שעת פתיחת הקלפיות לא תקינה." };
+    const group = await createGroup(db, name, deadline, electionStart);
     paths(group.code);
     redirect(`/admin/${group.code}`);
   } catch (error) {
@@ -154,10 +157,14 @@ export async function updateGroupAction(formData: FormData): Promise<ActionResul
     const clearDeadline = formData.get("clearDeadline") === "1";
     const deadline = clearDeadline ? null : deadlineRaw ? jerusalemLocalToIso(deadlineRaw) : group.deadline;
     if (deadlineRaw && !clearDeadline && !deadline) return { ok: false, error: "שעת הנעילה לא תקינה." };
+    const electionRaw = String(formData.get("electionStart") || "");
+    const electionStart = jerusalemLocalToIso(electionRaw);
+    if (!electionStart) return { ok: false, error: "שעת פתיחת הקלפיות לא תקינה." };
     const knesset = Number(formData.get("knesset") || group.knessetNumber);
     await updateGroup(db, group.id, {
       name: String(formData.get("name") || group.name),
       deadline,
+      electionStart,
       knessetNumber: knesset,
       preferComputed: formData.get("preferComputed") === "1",
     });

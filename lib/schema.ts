@@ -4,6 +4,7 @@ export const SCHEMA_STATEMENTS = [
     name TEXT NOT NULL,
     code TEXT NOT NULL UNIQUE,
     deadline TEXT,
+    election_start TEXT,
     knesset_number INTEGER NOT NULL DEFAULT 26,
     prefer_computed_seats INTEGER NOT NULL DEFAULT 0,
     results_override INTEGER NOT NULL DEFAULT 0,
