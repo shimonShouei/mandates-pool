@@ -36,9 +36,12 @@ export function CrowdLive({ initial, pollUrl }: { initial: CrowdView; pollUrl: s
 }
 
 export function CrowdBoard({ view }: { view: CrowdView }) {
-  if (!view.visible) {
+    if (!view.visible) {
     return (
-      <div className="mt-6 rounded-xl bg-card px-4 py-4 text-sm leading-relaxed ring-1 ring-foreground/10">
+      <div className="mt-6 rounded-3xl bg-card px-4 py-6 text-sm leading-relaxed ring-1 ring-border">
+        <p className="mb-2 text-3xl" aria-hidden="true">
+          📊
+        </p>
         {view.reason === "lock" ? (
           <p>חוכמת ההמונים תופיע אחרי נעילת הניחושים. עד אז לא מציגים סיכום.</p>
         ) : (
@@ -60,6 +63,11 @@ export function CrowdBoard({ view }: { view: CrowdView }) {
         מתוך {formatNumber(view.sampleSize ?? 0)} ניחושים שלמים. רואים רק סיכום.
         {hasActual ? " אחרי התוצאות, «בפועל» הוא קו אדום על התחזית." : ""}
       </p>
+
+      <section className="space-y-3">
+        <h2 className="font-heading text-3xl">ממוצע מושבים</h2>
+        <MeanChart parties={view.parties} />
+      </section>
 
       <section className="space-y-3">
         <h2 className="font-heading text-3xl">גושים</h2>
@@ -88,9 +96,30 @@ export function CrowdBoard({ view }: { view: CrowdView }) {
   );
 }
 
+function MeanChart({ parties }: { parties: CrowdPartyView[] }) {
+  const ranked = [...parties].sort((a, b) => b.mean - a.mean || a.name.localeCompare(b.name, "he"));
+  const scale = Math.max(20, ...ranked.map((party) => party.mean), ...ranked.map((party) => party.actual ?? 0));
+  return (
+    <ul className="space-y-2 rounded-3xl bg-card p-4 ring-1 ring-border">
+      {ranked.map((party) => (
+        <li key={party.partyId} className="grid grid-cols-[7.5rem_1fr_auto] items-center gap-2 text-sm">
+          <span className="truncate">{party.name}</span>
+          <span className="relative h-3 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+            <span
+              className="absolute inset-y-0 start-0 rounded-full"
+              style={{ width: `${(party.mean / scale) * 100}%`, background: party.color }}
+            />
+          </span>
+          <span className="tabular-nums">{formatScore(party.mean)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function BlocCard({ bloc }: { bloc: BlocAggregate }) {
   return (
-    <article className="space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+    <article className="space-y-3 rounded-3xl bg-card p-4 ring-1 ring-border">
       <div className="flex items-start justify-between gap-3">
         <h3 className="font-heading text-2xl leading-none">{bloc.name}</h3>
         <p className="text-end">
@@ -98,6 +127,13 @@ function BlocCard({ bloc }: { bloc: BlocAggregate }) {
           <span className="text-xs text-muted-foreground">ממוצע מושבים</span>
         </p>
       </div>
+      <div className="h-4 overflow-hidden rounded-full bg-muted" dir="ltr" aria-hidden="true">
+        <div
+          className="h-full rounded-full bg-primary"
+          style={{ width: `${Math.max(0, Math.min(100, (bloc.mean / 120) * 100))}%` }}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">מתוך 120 מושבים. הקו של 61 הוא רוב.</p>
       <MajorityBar percent={bloc.majorityPercent} />
       <p className="text-sm">
         {formatNumber(bloc.majorityPercent)}% מהניחושים נותנים לגוש 61 או יותר.
@@ -134,7 +170,7 @@ function MajorityBar({ percent }: { percent: number }) {
 function PartyCard({ party }: { party: CrowdPartyView }) {
   const scale = Math.max(40, party.q3, party.mean, party.actual ?? 0, 4);
   return (
-    <article className="space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+    <article className="space-y-3 rounded-3xl bg-card p-4 ring-1 ring-border">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="flex items-center gap-2 font-medium">

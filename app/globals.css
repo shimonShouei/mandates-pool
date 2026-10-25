@@ -39,6 +39,9 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-success: var(--success);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,24 +52,27 @@
 }
 
 :root {
-  --background: oklch(0.962 0.014 88);
-  --foreground: oklch(0.23 0.02 65);
-  --card: oklch(0.988 0.008 92);
-  --card-foreground: oklch(0.23 0.02 65);
-  --popover: oklch(0.988 0.008 92);
-  --popover-foreground: oklch(0.23 0.02 65);
-  --primary: oklch(0.4 0.055 190);
-  --primary-foreground: oklch(0.98 0.01 92);
-  --secondary: oklch(0.94 0.016 86);
-  --secondary-foreground: oklch(0.28 0.02 65);
-  --muted: oklch(0.94 0.016 86);
-  --muted-foreground: oklch(0.48 0.02 65);
-  --accent: oklch(0.92 0.03 86);
-  --accent-foreground: oklch(0.28 0.02 65);
-  --destructive: oklch(0.5 0.15 30);
-  --border: oklch(0.86 0.02 82);
-  --input: oklch(0.86 0.02 82);
-  --ring: oklch(0.4 0.055 190);
+  --background: oklch(0.97 0.02 312);
+  --foreground: oklch(0.22 0.045 292);
+  --card: oklch(0.995 0.008 312);
+  --card-foreground: oklch(0.22 0.045 292);
+  --popover: oklch(0.995 0.008 312);
+  --popover-foreground: oklch(0.22 0.045 292);
+  --primary: oklch(0.48 0.2 355);
+  --primary-foreground: oklch(0.99 0.01 320);
+  --secondary: oklch(0.93 0.03 312);
+  --secondary-foreground: oklch(0.28 0.05 292);
+  --muted: oklch(0.94 0.02 312);
+  --muted-foreground: oklch(0.4 0.03 292);
+  --accent: oklch(0.93 0.07 135);
+  --accent-foreground: oklch(0.28 0.05 150);
+  --destructive: oklch(0.5 0.19 25);
+  --warning: oklch(0.42 0.12 65);
+  --warning-bg: oklch(0.95 0.04 90);
+  --success: oklch(0.4 0.12 150);
+  --border: oklch(0.86 0.03 312);
+  --input: oklch(0.86 0.03 312);
+  --ring: oklch(0.48 0.2 355);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -84,24 +90,27 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --background: oklch(0.17 0.04 292);
+  --foreground: oklch(0.97 0.015 320);
+  --card: oklch(0.23 0.045 292);
+  --card-foreground: oklch(0.97 0.015 320);
+  --popover: oklch(0.23 0.045 292);
+  --popover-foreground: oklch(0.97 0.015 320);
+  --primary: oklch(0.78 0.16 350);
+  --primary-foreground: oklch(0.18 0.04 292);
+  --secondary: oklch(0.3 0.04 292);
+  --secondary-foreground: oklch(0.97 0.015 320);
+  --muted: oklch(0.28 0.035 292);
+  --muted-foreground: oklch(0.8 0.03 310);
+  --accent: oklch(0.32 0.06 145);
+  --accent-foreground: oklch(0.94 0.08 140);
+  --destructive: oklch(0.72 0.17 22);
+  --warning: oklch(0.86 0.12 90);
+  --warning-bg: oklch(0.3 0.04 70);
+  --success: oklch(0.86 0.16 145);
+  --border: oklch(0.55 0.04 292 / 35%);
+  --input: oklch(0.55 0.04 292 / 45%);
+  --ring: oklch(0.78 0.16 350);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -128,8 +137,42 @@
     @apply font-sans;
     color-scheme: light;
   }
+  html.dark {
+    color-scheme: dark;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
 }
 
 .font-heading {
-  font-family: var(--font-heading), "Frank Ruhl Libre", serif;
+  font-family: var(--font-sans), Rubik, sans-serif;
+  font-weight: 800;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise-in {
+  animation: rise-in 0.45s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

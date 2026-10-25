@@ -66,7 +66,7 @@ SQLite לא נשמר על ורסל. צריך Postgres.
 2. דחפו את הריפו, אם עוד אין חיבור.
 3. ב-[Vercel](https://vercel.com) בחרו Import Project, וחברו את הריפו. הפריימוורק מזוהה כ-Next.js. מסלול Hobby מספיק.
 4. הגדירו `ADMIN_SECRET`, `CRON_SECRET`, `AUTH_SECRET`, ואת מחרוזות Neon. `AUTH_URL` לא חובה. Google ו-Resend לא חובה: בלי המפתחות הכפתורים פשוט לא מופיעים.
-5. פרסו. בזמן הבנייה, אם יש כתובת Postgres, רצה המיגרציה על החיבור הישיר ורשימת המפלגות נזרעת כשהטבלה ריקה. אותה פעולה רצה שוב בבקשה הראשונה אם הבנייה דילגה. הכתובת תהיה מהצורה `https://<project>.vercel.app`.
+5. פרסו. בזמן הבנייה, אם יש כתובת Postgres, רצה המיגרציה על החיבור הישיר ורשימת המפלגות נזרעת כשהטבלה ריקה. אותה פעולה רצה שוב בבקשה הראשונה אם הבנייה דילגה. הכתובת תהיה מהצורה `https://<project>.vercel.app`. Web Analytics ו-Speed Insights נטענים מהפריסה בלי משתני סביבה נוספים. מסלול Hobby לא תומך באירועים מותאמים, אז לא נשלחים.
 6. שלחו את `https://<project>.vercel.app`. כל אחד פותח קבוצה מדף הבית. `https://<project>.vercel.app/board` הוא הדירוג הארצי. `https://<project>.vercel.app/admin` מיועד רק למי שמחזיק ב-`ADMIN_SECRET`.
 
 ## מסלול חינמי בליל הבחירות
@@ -173,7 +173,7 @@ Install from Chrome or Edge with “Install app” / “Add to home screen”. O
 2. Push this repo.
 3. Import it on [Vercel](https://vercel.com) as a Next.js app. The Hobby plan is enough.
 4. Set `ADMIN_SECRET`, `CRON_SECRET`, `AUTH_SECRET`, and the Neon URLs. Leave `AUTH_URL` empty: `trustHost` uses the request host, and `VERCEL_URL` covers a request that only has the deployment host. Google and Resend are optional. Without their keys those buttons stay hidden and the site still boots. SQLite will not persist on Vercel; the app refuses to boot there without a Postgres URL.
-5. Deploy. The build runs the schema migration when a Postgres URL is present, on the direct URL, and seeds the parties list when that table is empty. The first request migrates again if the build skipped it. Share `https://<project>.vercel.app`. People create their own groups there. `/board` is the national leaderboard. `/scoring` explains the score in Hebrew. `/admin` is only for the `ADMIN_SECRET` holder.
+5. Deploy. The build runs the schema migration when a Postgres URL is present, on the direct URL, and seeds the parties list when that table is empty. The first request migrates again if the build skipped it. Share `https://<project>.vercel.app`. People create their own groups there. `/board` is the national leaderboard. `/scoring` explains the score in Hebrew. `/admin` is only for the `ADMIN_SECRET` holder. Web Analytics and Speed Insights load from the deployment with no extra environment variables. Hobby does not support custom events, so the app does not send any.
 
 ## Free tier on election night
 

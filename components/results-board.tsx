@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { BetRoster, OwnHistory } from "@/components/bet-roster";
+import { PlayerMark } from "@/components/player-mark";
+import { Podium } from "@/components/podium";
+import { RankMove, useRankMoves } from "@/components/rank-memory";
 import { formatIls, formatNumber, formatPercent, formatScore, formatSigned, formatWhen } from "@/lib/format";
 import { splitLabel, STAKE_NOTE } from "@/lib/payout";
 import type { GroupStanding, OwnView, PublicGroupState, PublicStandingsPayload } from "@/lib/public-state";
@@ -76,7 +79,7 @@ export function ResultsBoard({ code, initial }: { code: string; initial: PublicG
       </div>
 
       {state.fetchProblem ? (
-        <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-950 ring-1 ring-amber-200">{state.fetchProblem}</p>
+        <p className="rounded-3xl bg-warning-bg px-3 py-2 text-sm text-warning ring-1 ring-warning/30">{state.fetchProblem}</p>
       ) : null}
 
       {results ? (
@@ -97,9 +100,9 @@ export function ResultsBoard({ code, initial }: { code: string; initial: PublicG
             עודכן {formatWhen(results.fetchedAt)}.
           </p>
           <p className="text-sm text-muted-foreground">{METHOD[results.seatMethod]}</p>
-          {results.note ? <p className="whitespace-pre-wrap text-sm text-amber-950">{results.note}</p> : null}
+          {results.note ? <p className="whitespace-pre-wrap text-sm text-warning">{results.note}</p> : null}
           {results.unmapped.some((row) => row.seats > 0) ? (
-            <ul className="text-sm text-amber-950">
+            <ul className="text-sm text-warning">
               {results.unmapped
                 .filter((row) => row.seats > 0)
                 .map((row) => (
@@ -146,26 +149,7 @@ export function ResultsBoard({ code, initial }: { code: string; initial: PublicG
       ) : null}
 
       {results?.scoreable && standings.length > 0 ? (
-        <div className="space-y-3">
-          <p className="font-heading text-2xl">
-            {winners.length === 1
-              ? winners[0].isYou
-                ? "הכי מעט מושבים לא במקום: אתם"
-                : `הכי מעט מושבים לא במקום: ${winners[0].alias}`
-              : `תיקו בצמרת: ${winners.map((row) => row.alias).join(", ")}`}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            המספר הגדול הוא מושבים לא במקום, חצי מסכום הסטיות. נמוך יותר עדיף.{" "}
-            <Link href="/scoring" className="text-primary underline-offset-4 hover:underline">
-              איך מחשבים את הציון
-            </Link>
-          </p>
-          <ol className="space-y-2">
-            {standings.map((row) => (
-              <StandingRow key={row.alias} row={row} bonusOn={bonusOn} partyCount={state.partyCount} showWinnings={state.stake != null} />
-            ))}
-          </ol>
-        </div>
+        <StandingsList code={code} standings={standings} winners={winners} bonusOn={bonusOn} partyCount={state.partyCount} showWinnings={state.stake != null} />
       ) : null}
 
       {state.own?.breakdown ? (
@@ -256,28 +240,93 @@ function applyOwn(current: PublicGroupState, own: OwnView | null): PublicGroupSt
   };
 }
 
+function StandingsList({
+  code,
+  standings,
+  winners,
+  bonusOn,
+  partyCount,
+  showWinnings,
+}: {
+  code: string;
+  standings: GroupStanding[];
+  winners: GroupStanding[];
+  bonusOn: boolean;
+  partyCount: number;
+  showWinnings: boolean;
+}) {
+  const moves = useRankMoves(
+    `mandatim-group-ranks:${code}`,
+    standings.map((row) => ({ id: row.alias, rank: row.rank })),
+  );
+  return (
+    <div className="space-y-3">
+      <Podium
+        entries={standings
+          .filter((row) => row.rank <= 3)
+          .slice(0, 3)
+          .map((row) => ({
+            id: row.alias,
+            rank: row.rank,
+            title: row.isYou ? `${row.alias} · אתם` : row.alias,
+            score: formatScore(row.misplaced),
+            scoreLabel: "לא במקום",
+          }))}
+      />
+      <p className="font-heading text-2xl">
+        {winners.length === 1
+          ? winners[0].isYou
+            ? "הכי מעט מושבים לא במקום: אתם"
+            : `הכי מעט מושבים לא במקום: ${winners[0].alias}`
+          : `תיקו בצמרת: ${winners.map((row) => row.alias).join(", ")}`}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        המספר הגדול הוא מושבים לא במקום, חצי מסכום הסטיות. נמוך יותר עדיף.{" "}
+        <Link href="/scoring" className="text-primary underline-offset-4 hover:underline">
+          איך מחשבים את הציון
+        </Link>
+      </p>
+      <ol className="space-y-2">
+        {standings.map((row) => (
+          <StandingRow
+            key={row.alias}
+            row={row}
+            bonusOn={bonusOn}
+            partyCount={partyCount}
+            showWinnings={showWinnings}
+            delta={moves[row.alias]}
+          />
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function StandingRow({
   row,
   bonusOn,
   partyCount,
   showWinnings,
+  delta,
 }: {
   row: GroupStanding;
   bonusOn: boolean;
   partyCount: number;
   showWinnings: boolean;
+  delta?: number;
 }) {
   return (
     <li
-      className={`flex items-center justify-between gap-3 rounded-xl px-3 py-3 ring-1 ring-foreground/10 ${
+      className={`flex items-center justify-between gap-3 rounded-3xl px-3 py-3 ring-1 ring-border ${
         row.isYou ? "bg-primary/10" : "bg-card"
       }`}
     >
       <div className="flex min-w-0 items-center gap-3">
-        <span className="font-heading w-8 text-2xl tabular-nums">{formatNumber(row.rank)}</span>
-        <span className="truncate font-medium">
+        <span className="w-8 font-heading text-2xl tabular-nums">{formatNumber(row.rank)}</span>
+        <PlayerMark seed={row.alias} />
+        <span className="min-w-0 truncate font-medium">
           {row.alias}
-          {row.isYou ? <span className="text-primary"> · אתם</span> : null}
+          {row.isYou ? <span className="text-primary"> · אתם</span> : null} <RankMove delta={delta} />
         </span>
       </div>
       <div className="text-end text-sm tabular-nums">

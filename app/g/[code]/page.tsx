@@ -1,5 +1,7 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { BetForm } from "@/components/bet-form";
+import { PlayerMark } from "@/components/player-mark";
 import { CopyCode } from "@/components/copy-code";
 import { JoinForm } from "@/components/join-form";
 import { LockCountdown } from "@/components/lock-status";
@@ -11,6 +13,22 @@ import { getDb } from "@/lib/db";
 import { visibilityNote } from "@/lib/bet-history";
 import { getGroupByCode, getPublicState, isGroupAdmin, listParties } from "@/lib/game";
 import { readGroupAdminToken, readToken } from "@/lib/session";
+
+export async function generateMetadata({ params }: { params: Promise<{ code: string }> }): Promise<Metadata> {
+  const { code } = await params;
+  try {
+    const group = await getGroupByCode(await getDb(), code);
+    if (!group) return { title: "אין קבוצה כזאת · מנדטים" };
+    const description = `הצטרפו לניחוש המושבים בקבוצה ${group.name}. קוד ${group.code}. הנעילה ב-27.10.2026 בשעה 07:00.`;
+    return {
+      title: `${group.name} · מנדטים`,
+      description,
+      openGraph: { title: `${group.name} · מנדטים`, description },
+    };
+  } catch {
+    return { title: "מנדטים" };
+  }
+}
 
 export default async function GroupPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
@@ -49,7 +67,10 @@ export default async function GroupPage({ params }: { params: Promise<{ code: st
           {state.group.locked ? <Badge>הניחושים נעולים</Badge> : <Badge variant="outline">פתוח עד הנעילה</Badge>}
           <Badge variant="outline">{state.group.visibility === "open" ? "קבוצה פתוחה" : "קבוצה אנונימית"}</Badge>
         </div>
-        <h1 className="font-heading text-5xl leading-none">{group.name}</h1>
+        <div className="flex items-center gap-3">
+          <PlayerMark seed={group.code} />
+          <h1 className="font-heading text-5xl leading-none">{group.name}</h1>
+        </div>
         <LockCountdown
           lockAt={state.group.lockAt}
           locked={state.group.locked}

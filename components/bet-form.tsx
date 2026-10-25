@@ -3,6 +3,8 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { leaveGroup, saveBet } from "@/app/actions";
+import { ConfettiBurst } from "@/components/confetti-burst";
+import { Hemicycle } from "@/components/hemicycle";
 import { useLocked } from "@/components/lock-status";
 import { Button } from "@/components/ui/button";
 import { KNESSET_SEATS, seatWarningForParty } from "@/lib/seats";
@@ -51,11 +53,7 @@ export function BetForm({
     .map((party) => seatWarningForParty(party.name, seats[party.id] ?? 0))
     .filter((warning): warning is string => Boolean(warning));
 
-  const dots: string[] = [];
-  for (const party of parties) {
-    const count = Math.max(0, seats[party.id] ?? 0);
-    for (let index = 0; index < count && dots.length < KNESSET_SEATS; index += 1) dots.push(party.color);
-  }
+  const remaining = KNESSET_SEATS - total;
 
   function update(id: string, value: number) {
     setSaved(false);
@@ -82,6 +80,7 @@ export function BetForm({
         });
       }}
     >
+      <ConfettiBurst fire={saved} />
       <input type="hidden" name="code" value={code} />
       <div className="flex items-end justify-between gap-3">
         <div className="min-w-0 flex-1">
@@ -89,46 +88,40 @@ export function BetForm({
           <p className="mt-1 max-w-prose text-sm text-muted-foreground">{policy}</p>
           <h2 className="font-heading text-3xl leading-none">120 מנדטים</h2>
         </div>
-        <p className={`font-heading text-4xl tabular-nums ${total === KNESSET_SEATS ? "text-primary" : "text-destructive"}`}>
-          {total}
+        <p className="text-end">
+          <span className={`block font-heading text-4xl tabular-nums ${total === KNESSET_SEATS ? "text-success" : "text-destructive"}`}>
+            {total}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {total === KNESSET_SEATS ? "בדיוק 120" : remaining > 0 ? `נשארו ${remaining}` : `עודף ${-remaining}`}
+          </span>
         </p>
       </div>
 
-      <div className="grid grid-cols-12 gap-1" aria-hidden="true">
-        {Array.from({ length: KNESSET_SEATS }, (_, index) => (
-          <span
-            key={index}
-            className="aspect-square rounded-[3px] border border-foreground/10"
-            style={{ background: dots[index] ?? "transparent" }}
-          />
-        ))}
-      </div>
-      {total > KNESSET_SEATS ? (
-        <p className="text-sm text-destructive">יש {total - KNESSET_SEATS} מנדטים מעל 120.</p>
-      ) : null}
+      <Hemicycle seats={parties.map((party) => ({ color: party.color, count: seats[party.id] ?? 0 }))} />
 
       <ul className="space-y-2">
         {parties.map((party) => {
           const value = seats[party.id] ?? 0;
           const warning = seatWarningForParty(party.name, value);
           return (
-            <li key={party.id} className="rounded-xl bg-card px-3 py-2 ring-1 ring-foreground/10">
+            <li key={party.id} className="rounded-3xl bg-card px-3 py-3 ring-1 ring-border transition hover:ring-primary/40">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="size-2.5 shrink-0 rounded-full" style={{ background: party.color }} />
+                    <span className="size-3 shrink-0 rounded-full" style={{ background: party.color }} />
                     <span className="truncate font-medium">{party.name}</span>
+                    {party.ballot ? (
+                      <span dir="ltr" className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                        {party.ballot}
+                      </span>
+                    ) : null}
                   </div>
-                  {party.ballot ? (
-                    <div dir="ltr" className="ps-4 text-xs text-muted-foreground">
-                      {party.ballot}
-                    </div>
-                  ) : null}
                 </div>
                 <div dir="ltr" className="flex items-center gap-1">
                   <button
                     type="button"
-                    className="size-11 rounded-lg border border-border text-lg disabled:opacity-40"
+                    className="size-11 rounded-xl border border-border text-lg focus-visible:ring-3 focus-visible:ring-ring disabled:opacity-40"
                     disabled={closed || value <= 0}
                     onClick={() => update(party.id, value - 1)}
                     aria-label={`פחות ל${party.name}`}
@@ -138,7 +131,7 @@ export function BetForm({
                   <input
                     inputMode="numeric"
                     aria-label={party.name}
-                    className="h-11 w-14 rounded-lg border border-input bg-transparent text-center text-base tabular-nums outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                    className="h-11 w-14 rounded-xl border border-input bg-transparent text-center text-base tabular-nums outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                     disabled={closed}
                     value={value}
                     onChange={(event) => {
@@ -153,7 +146,7 @@ export function BetForm({
                   />
                   <button
                     type="button"
-                    className="size-11 rounded-lg border border-border text-lg disabled:opacity-40"
+                    className="size-11 rounded-xl border border-border text-lg focus-visible:ring-3 focus-visible:ring-ring disabled:opacity-40"
                     disabled={closed}
                     onClick={() => update(party.id, value + 1)}
                     aria-label={`עוד ל${party.name}`}
@@ -162,19 +155,31 @@ export function BetForm({
                   </button>
                 </div>
               </div>
-              {warning ? <p className="mt-1 text-xs text-amber-800">{warning}</p> : null}
+              <input
+                type="range"
+                min={0}
+                max={KNESSET_SEATS}
+                step={1}
+                value={Math.min(KNESSET_SEATS, value)}
+                disabled={closed}
+                aria-label={`מחוון מושבים ל${party.name}`}
+                className="mt-2 h-8 w-full cursor-pointer accent-current disabled:cursor-not-allowed disabled:opacity-40"
+                style={{ accentColor: party.color }}
+                onChange={(event) => update(party.id, Number(event.target.value))}
+              />
+              {warning ? <p className="mt-1 text-xs text-warning">{warning}</p> : null}
             </li>
           );
         })}
       </ul>
 
       {partyWarnings.length > 0 && !closed ? (
-        <p className="text-sm text-amber-900">אפשר לשמור גם עם האזהרה. החישוב הסופי לא ייתן 1–3 מנדטים.</p>
+        <p className="text-sm text-warning">אפשר לשמור גם עם האזהרה. החישוב הסופי לא ייתן 1–3 מנדטים.</p>
       ) : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {saved ? <p className="text-sm text-primary">הניחוש נשמר.</p> : null}
       {warnings.map((warning) => (
-        <p key={warning} className="text-sm text-amber-900">
+        <p key={warning} className="text-sm text-warning">
           {warning}
         </p>
       ))}
@@ -183,7 +188,7 @@ export function BetForm({
         <div className="mx-auto flex max-w-lg items-center justify-between gap-3">
           <div>
             <div className="text-xs text-muted-foreground">סכום</div>
-            <div className={`font-heading text-2xl tabular-nums ${total === KNESSET_SEATS ? "text-primary" : "text-destructive"}`}>
+            <div className={`font-heading text-2xl tabular-nums ${total === KNESSET_SEATS ? "text-success" : "text-destructive"}`}>
               {total} / {KNESSET_SEATS}
             </div>
           </div>
