@@ -1,3 +1,5 @@
+export {};
+
 const base = (process.env.SMOKE_BASE_URL || "https://mandates-pool.vercel.app").replace(/\/$/, "");
 
 const pages = ["/", "/board", "/crowd", "/scoring", "/signin"];

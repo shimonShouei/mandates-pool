@@ -3,6 +3,8 @@
  * Resend, EMAIL_FROM, or AUTH_URL. Importing auth must not throw, and both
  * providers stay hidden.
  */
+export {};
+
 delete process.env.AUTH_URL;
 delete process.env.NEXTAUTH_URL;
 delete process.env.AUTH_GOOGLE_ID;
