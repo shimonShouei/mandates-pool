@@ -23,6 +23,9 @@ export function checkSeatVector(seats: number[]): SeatCheck {
   if (seats.some((value) => value < 0)) {
     return { ok: false, error: "אי אפשר לרשום מספר מנדטים שלילי.", warnings };
   }
+  if (seats.some((value) => value > KNESSET_SEATS)) {
+    return { ok: false, error: `אי אפשר לתת לרשימה יותר מ-${KNESSET_SEATS} מנדטים.`, warnings };
+  }
   const sum = seats.reduce((total, value) => total + value, 0);
   if (sum !== KNESSET_SEATS) {
     return {

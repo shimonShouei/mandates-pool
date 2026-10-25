@@ -9,6 +9,9 @@ describe("seat checks", () => {
     if (!badSum.ok) expect(badSum.error).toContain(String(KNESSET_SEATS));
     expect(checkSeatVector([60.5, 59.5]).ok).toBe(false);
     expect(checkSeatVector([-1, 121]).ok).toBe(false);
+    const tooMany = checkSeatVector([121, 0]);
+    expect(tooMany.ok).toBe(false);
+    if (!tooMany.ok) expect(tooMany.error).toContain("120");
   });
 
   it("warns that 1 to 3 seats cannot clear the threshold", () => {

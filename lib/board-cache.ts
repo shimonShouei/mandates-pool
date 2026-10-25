@@ -163,10 +163,12 @@ async function boardKey(db: Db): Promise<string> {
     stake: string | null;
     people: string | number | null;
     crowd: string | null;
+    fetchError: string | null;
   }>(
     `SELECT
        (SELECT CAST(board_revision AS TEXT) FROM site WHERE id = 'site') AS rev,
        (SELECT CAST(threshold_bonus AS TEXT) FROM site WHERE id = 'site') AS bonus,
+       (SELECT COALESCE(last_fetch_error, '') FROM site WHERE id = 'site') AS fetchError,
        (SELECT id || '|' || fetched_at || '|' || CAST(scoreable AS TEXT) || '|' || seat_method
           FROM result_snapshots ORDER BY fetched_at DESC LIMIT 1) AS snap,
        (SELECT COALESCE(MAX(updated_at), '') || '|' || CAST(COUNT(*) AS TEXT) FROM predictions) AS preds,
@@ -178,7 +180,7 @@ async function boardKey(db: Db): Promise<string> {
        (SELECT CAST(COALESCE(crowd_min_bets, 5) AS TEXT) || '|' || CAST(COALESCE(crowd_before_lock, 1) AS TEXT)
           FROM site WHERE id = 'site') AS crowd`,
   );
-  const base = `crowd|${row?.rev ?? 0}|${row?.bonus ?? ""}|${row?.snap ?? ""}|${row?.preds ?? ""}|${row?.groups ?? ""}|${row?.stake ?? ""}|${row?.people ?? 0}|${row?.crowd ?? ""}`;
+  const base = `crowd|${row?.rev ?? 0}|${row?.bonus ?? ""}|${row?.snap ?? ""}|${row?.preds ?? ""}|${row?.groups ?? ""}|${row?.stake ?? ""}|${row?.people ?? 0}|${row?.crowd ?? ""}|${row?.fetchError ?? ""}`;
   return `${base}|${await crowdLockKey(db)}`;
 }
 

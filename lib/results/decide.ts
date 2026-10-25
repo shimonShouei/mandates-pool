@@ -169,12 +169,16 @@ export function decideSeats(input: {
     };
   });
 
-  const total = rows.reduce((sum, row) => sum + row.seats, 0);
+  const mappedTotal = rows.filter((row) => row.mapped).reduce((sum, row) => sum + row.seats, 0);
+  const unmappedSeats = rows.filter((row) => !row.mapped).reduce((sum, row) => sum + row.seats, 0);
+  if (unmappedSeats > 0) {
+    warnings.push("יש רשימה בתוצאות שלא מזוהה במשחק. הדירוג יחכה עד שיוסיפו אותה.");
+  }
   return {
     method: method === "incomplete" ? "incomplete" : method,
     rows,
     warnings,
-    scoreable: total === KNESSET_SEATS,
+    scoreable: mappedTotal === KNESSET_SEATS && unmappedSeats === 0,
     ignoredAgreements: ignored,
   };
 }

@@ -591,6 +591,21 @@ export async function removeAgreement(db: Db, agreementId: string) {
 
 const LOCKED_MESSAGE = "הניחושים נעולים. אי אפשר להצטרף או לשנות אחרי הנעילה.";
 
+/** A blank cell is zero. Anything else must be a plain integer, not hex, scientific, or a boolean. */
+function readSeat(value: unknown): number {
+  if (value == null || value === "") return 0;
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) throw new GameError("מנדטים חייבים להיות מספרים שלמים.");
+    return value;
+  }
+  if (typeof value === "string" && /^-?(0|[1-9]\d*)$/.test(value)) {
+    const number = Number(value);
+    if (!Number.isSafeInteger(number)) throw new GameError("מנדטים חייבים להיות מספרים שלמים.");
+    return number;
+  }
+  throw new GameError("מנדטים חייבים להיות מספרים שלמים.");
+}
+
 function assertBetsOpen(group: { electionStart: string; deadline: string | null }, now: number) {
   if (betsLocked(group.electionStart, group.deadline, now)) throw new GameError(LOCKED_MESSAGE);
 }
@@ -694,9 +709,7 @@ async function writePrediction(
   }
   const seats: Record<string, number> = {};
   for (const party of parties) {
-    const value = rawSeats[party.id] ?? 0;
-    const number = typeof value === "number" ? value : Number(value);
-    seats[party.id] = number;
+    seats[party.id] = readSeat(rawSeats[party.id]);
   }
   const check = checkSeatVector(parties.map((party) => seats[party.id]));
   if (!check.ok) throw new GameError(check.error);

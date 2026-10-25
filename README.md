@@ -30,6 +30,8 @@ npm test
 npm run dev
 ```
 
+תוכנית הבדיקות ליום הבחירות נמצאת ב-`docs/TEST_PLAN.md`. `npm test` מריץ את יחידות ואת האינטגרציה. אחרי `npm run build`, `npm run test:e2e` מריץ את Playwright מול השרת המקומי, בדסקטופ ובטלפון. `LOAD_BASE_URL=http://127.0.0.1:38472 npm run test:load` בודק עומס קריאה קל על אותו שרת. `npm run smoke` שולח רק בקשות GET אל `https://mandates-pool.vercel.app` (או אל `SMOKE_BASE_URL`) ולא יוצר נתונים.
+
 ערכו את `.env.local` והחליפו את `ADMIN_SECRET`. בלי `DATABASE_URL` האפליקציה שומרת על SQLite ב-`data/mandates.db`.
 
 פתחו את דף הבית וצרו קבוצה. הקישור לחברים הוא `/g/<קוד>`. את קישור הניהול שומרים בנפרד. `ADMIN_SECRET` נדרש רק ל-`/admin`.
@@ -162,6 +164,8 @@ cp .env.example .env.local
 npm test
 npm run dev
 ```
+
+The election-day checklist is `docs/TEST_PLAN.md`. `npm test` runs the unit and integration suite. After `npm run build`, `npm run test:e2e` runs Playwright against the local production server, on desktop and mobile viewports. `LOAD_BASE_URL=http://127.0.0.1:38472 npm run test:load` is a short read-only load check of that same server. `npm run smoke` sends GET requests only to `https://mandates-pool.vercel.app` (or `SMOKE_BASE_URL`) and does not create data.
 
 Without `DATABASE_URL`, data is stored in SQLite at `data/mandates.db`. Open the homepage to create a group. Set `ADMIN_SECRET` before using `/admin`.
 
