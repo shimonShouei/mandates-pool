@@ -28,11 +28,7 @@ export function checkSeatVector(seats: number[]): SeatCheck {
   }
   const sum = seats.reduce((total, value) => total + value, 0);
   if (sum !== KNESSET_SEATS) {
-    return {
-      ok: false,
-      error: `הסכום חייב להיות ${KNESSET_SEATS}. כרגע ${sum}.`,
-      warnings,
-    };
+    return { ok: false, error: seatSumError(sum), warnings };
   }
   if (seats.some((value) => value > 0 && value < MIN_NONZERO_PREDICTION)) {
     warnings.push(
@@ -40,6 +36,19 @@ export function checkSeatVector(seats: number[]): SeatCheck {
     );
   }
   return { ok: true, warnings };
+}
+
+export function seatSumError(sum: number): string {
+  return `סך המנדטים חייב להיות בדיוק ${KNESSET_SEATS} (כרגע ${sum})`;
+}
+
+/** A typed or stepped seat stays inside 0..120. Values already stored are left for the caller to show. */
+export function clampSeat(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  const whole = Math.trunc(value);
+  if (whole < 0) return 0;
+  if (whole > KNESSET_SEATS) return KNESSET_SEATS;
+  return whole;
 }
 
 export function seatWarningForParty(name: string, seats: number): string | null {

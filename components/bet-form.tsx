@@ -7,7 +7,7 @@ import { ConfettiBurst } from "@/components/confetti-burst";
 import { Hemicycle } from "@/components/hemicycle";
 import { useLocked } from "@/components/lock-status";
 import { Button } from "@/components/ui/button";
-import { KNESSET_SEATS, seatWarningForParty } from "@/lib/seats";
+import { KNESSET_SEATS, clampSeat, seatSumError, seatWarningForParty } from "@/lib/seats";
 
 export type BetParty = {
   id: string;
@@ -53,11 +53,12 @@ export function BetForm({
     .map((party) => seatWarningForParty(party.name, seats[party.id] ?? 0))
     .filter((warning): warning is string => Boolean(warning));
 
-  const remaining = KNESSET_SEATS - total;
+  const exact = total === KNESSET_SEATS;
+  const counterClass = exact ? "text-success" : "text-destructive";
 
   function update(id: string, value: number) {
     setSaved(false);
-    setSeats((current) => ({ ...current, [id]: value }));
+    setSeats((current) => ({ ...current, [id]: clampSeat(value) }));
   }
 
   return (
@@ -65,6 +66,11 @@ export function BetForm({
       className="space-y-4"
       action={(formData) => {
         if (closed) return;
+        if (total !== KNESSET_SEATS) {
+          setError(seatSumError(total));
+          setSaved(false);
+          return;
+        }
         formData.set("seats", JSON.stringify(seats));
         startTransition(async () => {
           const result = await saveBet(formData);
@@ -88,13 +94,8 @@ export function BetForm({
           <p className="mt-1 max-w-prose text-sm text-muted-foreground">{policy}</p>
           <h2 className="font-heading text-3xl leading-none">120 מנדטים</h2>
         </div>
-        <p className="text-end">
-          <span className={`block font-heading text-4xl tabular-nums ${total === KNESSET_SEATS ? "text-success" : "text-destructive"}`}>
-            {total}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {total === KNESSET_SEATS ? "בדיוק 120" : remaining > 0 ? `נשארו ${remaining}` : `עודף ${-remaining}`}
-          </span>
+        <p className={`text-end font-heading text-2xl leading-none tabular-nums ${counterClass}`} aria-live="polite">
+          חולקו {total} מתוך {KNESSET_SEATS}
         </p>
       </div>
 
@@ -148,7 +149,7 @@ export function BetForm({
                   <button
                     type="button"
                     className="size-11 rounded-xl border border-border text-lg focus-visible:ring-3 focus-visible:ring-ring disabled:opacity-40"
-                    disabled={closed}
+                    disabled={closed || value >= KNESSET_SEATS}
                     onClick={() => update(party.id, value + 1)}
                     aria-label={`עוד ל${party.name}`}
                   >
@@ -191,16 +192,13 @@ export function BetForm({
 
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-lg items-center justify-between gap-3">
-          <div>
-            <div className="text-xs text-muted-foreground">סכום</div>
-            <div className={`font-heading text-2xl tabular-nums ${total === KNESSET_SEATS ? "text-success" : "text-destructive"}`}>
-              {total} / {KNESSET_SEATS}
-            </div>
-          </div>
+          <p className={`font-heading text-xl tabular-nums ${counterClass}`} aria-live="polite">
+            חולקו {total} מתוך {KNESSET_SEATS}
+          </p>
           {closed ? (
             <p className="text-sm font-medium">הניחושים נעולים</p>
           ) : (
-            <Button type="submit" className="h-11 px-5" disabled={pending || total !== KNESSET_SEATS}>
+            <Button type="submit" className="h-11 px-5" disabled={pending || !exact}>
               {pending ? "שומרים…" : "שמירת ניחוש"}
             </Button>
           )}

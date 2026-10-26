@@ -13,6 +13,7 @@ import { getDb } from "@/lib/db";
 import { visibilityNote } from "@/lib/bet-history";
 import { getGroupByCode, getPublicState, isGroupAdmin, listParties } from "@/lib/game";
 import { readGroupAdminToken, readToken } from "@/lib/session";
+import { KNESSET_SEATS } from "@/lib/seats";
 
 export async function generateMetadata({ params }: { params: Promise<{ code: string }> }): Promise<Metadata> {
   const { code } = await params;
@@ -101,6 +102,11 @@ export default async function GroupPage({ params }: { params: Promise<{ code: st
               כניסה
             </Link>{" "}
             מצרפת אותו לחשבון, ואז הוא נפתח גם ממכשיר אחר.
+          </p>
+        ) : null}
+        {state.own && state.own.total !== KNESSET_SEATS && state.own.prediction.some((row) => row.seats > 0) ? (
+          <p className="mb-3 rounded-xl bg-destructive/10 px-4 py-3 text-sm leading-relaxed text-destructive ring-1 ring-destructive/30">
+            הניחוש השמור הוא {state.own.total} מנדטים, לא {KNESSET_SEATS}. תקנו אותו לפני הנעילה.
           </p>
         ) : null}
         {state.own ? (

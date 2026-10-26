@@ -22,6 +22,7 @@ import { fetchOfficialResults } from "./results/fetch-official";
 import type { ParsedResults } from "./results/parse-cec";
 import { ensureFreshSite } from "./refresh";
 import { buildStandings, scoreGuess } from "./scoring";
+import { seatSumError } from "./seats";
 import { cleanDisplayName } from "./ids";
 import { isLocked, pollsOpenIso } from "./time";
 import { createAccount } from "./accounts";
@@ -78,6 +79,59 @@ describe("election-day bets", () => {
     expect(state.own?.prediction.find((row) => row.partyId === parties[3].id)?.seats).toBe(0);
 
     await expect(savePrediction(db, group.id, person.token, { ...ok, "not-a-party": 0 })).rejects.toThrow(/לא קיימת/);
+  });
+
+  it("rejects a total over or under 120 without writing a new version", async () => {
+    const db = await memory();
+    const group = await createGroup(db, "ניחושים", null, OPEN);
+    const parties = await listParties(db);
+    const person = await joinGroup(db, group.id, "נועה");
+    const ok = full(parties, 32, 24);
+    await savePrediction(db, group.id, person.token, ok);
+    const before = await db.get<{ c: number | string }>(
+      `SELECT COUNT(*) AS c FROM bet_versions WHERE participant_id = ?`,
+      [person.participantId],
+    );
+
+    const over = fill(parties, [80, 50]);
+    await expect(savePrediction(db, group.id, person.token, over)).rejects.toThrow(seatSumError(130));
+    await expect(savePrediction(db, group.id, person.token, fill(parties, [119]))).rejects.toThrow(seatSumError(119));
+    await expect(savePrediction(db, group.id, person.token, fill(parties, [121]))).rejects.toThrow(/120/);
+
+    const alice = await createAccount(db, "over-120@example.com");
+    await joinGroup(db, group.id, "דנה", Date.now(), alice.id);
+    await savePredictionForUser(db, group.id, alice.id, ok);
+    await expect(savePredictionForUser(db, group.id, alice.id, over)).rejects.toThrow(seatSumError(130));
+
+    const after = await db.get<{ c: number | string }>(
+      `SELECT COUNT(*) AS c FROM bet_versions WHERE participant_id = ?`,
+      [person.participantId],
+    );
+    expect(Number(after?.c)).toBe(Number(before?.c));
+    const kept = await getPublicState(db, group.id, person.token);
+    expect(kept.own?.total).toBe(120);
+    expect(kept.own?.submitted).toBe(true);
+    expect(kept.completeCount).toBe(2);
+
+    await db.run(
+      `UPDATE predictions SET seats = CASE party_id WHEN ? THEN 70 WHEN ? THEN 51 ELSE 0 END, updated_at = ? WHERE participant_id = ?`,
+      [parties[0].id, parties[1].id, "2099-01-01T00:00:00.000Z", person.participantId],
+    );
+    const legacy = await getPublicState(db, group.id, person.token);
+    expect(legacy.own?.total).toBe(121);
+    expect(legacy.own?.submitted).toBe(false);
+    expect(legacy.completeCount).toBe(1);
+    expect(legacy.standings.every((row) => row.alias !== person.alias)).toBe(true);
+    expect(() =>
+      buildStandings(
+        parties.map((party) => party.id),
+        {},
+        [{ id: person.participantId, alias: person.alias, predicted: { [parties[0].id]: 70, [parties[1].id]: 51 } }],
+      ),
+    ).not.toThrow();
+    expect(
+      scoreGuess(parties.map((party) => party.id), { [parties[0].id]: 70, [parties[1].id]: 51 }, {}).absolute,
+    ).toBeGreaterThan(0);
   });
 
   it("keeps Hebrew, emoji, and hostile nicknames as text", async () => {
