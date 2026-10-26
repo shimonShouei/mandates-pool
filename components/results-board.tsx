@@ -70,7 +70,7 @@ export function ResultsBoard({ code, initial }: { code: string; initial: PublicG
   const bonusOn = state.thresholdBonus > 0;
 
   return (
-    <section className="mt-8 space-y-4">
+    <section id="board" className="mt-8 scroll-mt-24 space-y-4">
       <div className="flex items-end justify-between gap-3">
         <h2 className="font-heading text-3xl">הדירוג</h2>
         <p className="text-sm text-muted-foreground">

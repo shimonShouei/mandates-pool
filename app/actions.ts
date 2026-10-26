@@ -108,7 +108,7 @@ export async function goToCode(formData: FormData) {
 export async function createPublicGroupAction(formData: FormData): Promise<ActionResult> {
   try {
     const userId = await currentUserId();
-    if (!userId) redirect("/signin?callbackUrl=/");
+    if (!userId) redirect("/signin?callbackUrl=/me");
     const db = await getDb();
     const group = await createPublicGroup(
       db,

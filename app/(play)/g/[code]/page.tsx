@@ -93,7 +93,7 @@ export default async function GroupPage({ params }: { params: Promise<{ code: st
         </p>
       </header>
 
-      <div className="mt-6">
+      <div id="bet" className="mt-6 scroll-mt-24">
         {state.own && !userId ? (
           <p className="mb-3 rounded-xl bg-card px-4 py-3 text-sm leading-relaxed ring-1 ring-foreground/10">
             הניחוש הזה שמור רק בדפדפן.{" "}

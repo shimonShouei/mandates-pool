@@ -12,6 +12,7 @@ import {
   participantFromUser,
   savePrediction,
   savePredictionForUser,
+  updateGroup,
   updateGroupAsAdmin,
 } from "./game";
 import { globalLeaderboard } from "./leaderboard";
@@ -66,6 +67,42 @@ describe("account bet access", () => {
     expect(ownSeat(await getPublicState(db, second.id, null, alice.id), parties[0].id)).toBe(12);
     expect(ownSeat(await getPublicState(db, group.id, null, alice.id), parties[0].id)).toBe(77);
     expect(await participantFromUser(db, group.id, bob.id)).toBeNull();
+  });
+
+  it("lists groups the account owns and groups it only bets in", async () => {
+    const db = await createSqliteDb(":memory:");
+    const parties = await listParties(db);
+    const alice = await createAccount(db, EMAIL_A);
+    const managed = await createGroup(db, "רק ניהול", null, OPEN_UNTIL, alice.id);
+    await updateGroup(db, managed.id, { stakeAgorot: 2000 });
+    const both = await createGroup(db, "גם מהמר", null, OPEN_UNTIL, alice.id);
+    await joinGroup(db, both.id, "נועה", Date.now(), alice.id);
+    await savePredictionForUser(db, both.id, alice.id, vector(parties, 120, 0));
+    const played = await createGroup(db, "של מישהו", null, OPEN_UNTIL);
+    await joinGroup(db, played.id, "דנה", Date.now(), alice.id);
+
+    const mine = await listMyGroups(db, alice.id);
+    const byName = Object.fromEntries(mine.map((row) => [row.name, row]));
+    expect(byName["רק ניהול"]).toMatchObject({
+      owned: true,
+      alias: null,
+      betSubmitted: false,
+      stakeAgorot: 2000,
+      participants: 0,
+    });
+    expect(byName["גם מהמר"]).toMatchObject({
+      owned: true,
+      alias: "נועה",
+      betSubmitted: true,
+      participants: 1,
+    });
+    expect(byName["של מישהו"]).toMatchObject({
+      owned: false,
+      alias: "דנה",
+      betSubmitted: false,
+      participants: 1,
+    });
+    expect(JSON.stringify(mine)).not.toContain(EMAIL_A);
   });
 
   it("claims a device bet on sign-in and leaves the old token dead", async () => {

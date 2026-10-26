@@ -2,6 +2,7 @@ import { safeEqual } from "./auth";
 import type { Db } from "./db";
 import { GameError } from "./game";
 import { hashToken, newId, newToken } from "./ids";
+import { KNESSET_SEATS } from "./seats";
 
 export type ClaimResult = "claimed" | "already" | "skipped";
 
@@ -76,17 +77,49 @@ export async function claimGroupOwner(db: Db, groupId: string, token: string | n
 export type MyGroup = {
   code: string;
   name: string;
-  alias: string;
+  alias: string | null;
+  stakeAgorot: number;
+  participants: number;
+  owned: boolean;
+  betSubmitted: boolean;
 };
 
+/** Groups this account owns, plays in, or both. Newest first. */
 export async function listMyGroups(db: Db, userId: string): Promise<MyGroup[]> {
-  const rows = await db.all<{ code: string; name: string; display_name: string }>(
-    `SELECT g.code, g.name, p.display_name
-     FROM participants p
-     JOIN groups g ON g.id = p.group_id
-     WHERE p.user_id = ?
-     ORDER BY p.created_at`,
-    [userId],
+  const rows = await db.all<{
+    code: string;
+    name: string;
+    stake_agorot: number | string | null;
+    owned: number | string;
+    participants: number | string;
+    alias: string | null;
+    seat_sum: number | string | null;
+  }>(
+    `SELECT g.code, g.name, g.stake_agorot,
+            CASE WHEN g.owner_user_id = ? THEN 1 ELSE 0 END AS owned,
+            (SELECT COUNT(*) FROM participants p WHERE p.group_id = g.id) AS participants,
+            mine.display_name AS alias,
+            CASE WHEN mine.id IS NULL THEN NULL
+                 ELSE COALESCE((SELECT SUM(pr.seats) FROM predictions pr WHERE pr.participant_id = mine.id), 0)
+            END AS seat_sum
+     FROM groups g
+     LEFT JOIN participants mine ON mine.id = (
+       SELECT p.id FROM participants p
+       WHERE p.group_id = g.id AND p.user_id = ?
+       ORDER BY p.created_at
+       LIMIT 1
+     )
+     WHERE g.owner_user_id = ? OR mine.user_id = ?
+     ORDER BY g.created_at DESC`,
+    [userId, userId, userId, userId],
   );
-  return rows.map((row) => ({ code: row.code, name: row.name, alias: row.display_name }));
+  return rows.map((row) => ({
+    code: row.code,
+    name: row.name,
+    alias: row.alias,
+    stakeAgorot: Number(row.stake_agorot) || 0,
+    participants: Number(row.participants) || 0,
+    owned: Number(row.owned) === 1,
+    betSubmitted: row.alias != null && Number(row.seat_sum) === KNESSET_SEATS,
+  }));
 }

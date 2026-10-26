@@ -30,7 +30,15 @@ export default async function HomePage() {
             <LockCountdown lockAt={pollsOpenIso()} locked={false} reason="election" serverNow={serverNow} prominent />
           </div>
           <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-            <a href="#open" className={cn(buttonVariants(), "h-12 px-5 text-base")}>
+            {user ? (
+              <Link href="/me" className={cn(buttonVariants(), "h-12 px-5 text-base")}>
+                הקבוצות שלי
+              </Link>
+            ) : null}
+            <a
+              href="#open"
+              className={cn(buttonVariants(user ? { variant: "outline" } : undefined), "h-12 px-5 text-base", user && "bg-background")}
+            >
               פתיחת קבוצה
             </a>
             <a href="#join" className={cn(buttonVariants({ variant: "outline" }), "h-12 bg-background px-5 text-base")}>
@@ -71,7 +79,7 @@ export default async function HomePage() {
               כדי לפתוח קבוצה נכנסים עם Google או עם קישור למייל. בלי סיסמה. הניחוש יישאר על החשבון, לא רק בדפדפן הזה.
             </p>
             <Link
-              href="/signin?callbackUrl=/"
+              href="/signin?callbackUrl=/me"
               className={cn(buttonVariants(), "h-11 w-full")}
             >
               כניסה

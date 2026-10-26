@@ -7,6 +7,11 @@ const links = [
   { href: "/scoring", label: "הציון" },
 ];
 
+function navLinks(signedIn: boolean) {
+  if (!signedIn) return links;
+  return [{ href: "/me", label: "הקבוצות שלי" }, ...links];
+}
+
 const legal = [
   { href: "/privacy", label: "מדיניות פרטיות" },
   { href: "/terms", label: "תנאי שימוש" },
@@ -45,12 +50,14 @@ export function SiteFrame({
               <ThemeToggle />
             </div>
           </div>
-          <nav className="mt-2 flex items-center gap-1 sm:mt-0" aria-label="ראשי">
-            {links.map((link) => (
+          <nav className="mt-2 flex flex-wrap items-center gap-1 sm:mt-0" aria-label="ראשי">
+            {navLinks(signedIn).map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="rounded-full px-2.5 py-2 text-sm font-medium text-foreground/80 transition hover:bg-muted hover:text-foreground sm:px-3"
+                className={`rounded-full px-2.5 py-2 text-sm font-medium transition hover:bg-muted hover:text-foreground sm:px-3 ${
+                  link.href === "/me" ? "bg-primary/10 text-primary" : "text-foreground/80"
+                }`}
               >
                 {link.label}
               </Link>
