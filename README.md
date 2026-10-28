@@ -1,1 +1,241 @@
-# mandates-pool
+# מנדטים
+
+ניחוש מושבים לכנסת. כל אחד פותח קבוצה, והמשתתפים מחלקים 120 מנדטים. אחרי הספירה, מי שהכי קרוב לתוצאה מנצח.
+
+הממשק בעברית, מימין לשמאל, ונוח בטלפון. אפשר להוסיף את האתר למסך הבית. אין אפליקציה בחנות.
+
+## איך זה עובד
+
+1. בדף הבית נכנסים לחשבון ונותנים שם לקבוצה. מי שפתח אותה הוא מנהל הקבוצה מהחשבון שלו, ומקבל גם קישור ניהול לגיבוי. הסוד `ADMIN_SECRET` לא נדרש לניהול קבוצה.
+2. כל חבר נכנס עם Google או עם קישור למייל (בלי סיסמה), ואז בוחר כינוי לקבוצה (אפשר שם בדוי). חשבון אחד יכול להיות בכמה קבוצות, עם ניחוש אחד וכינוי אחד בכל קבוצה. הכינוי הוא מה שרואים בדירוג. המייל לא מוצג למשתתפים אחרים ולא למנהל הקבוצה. מי שכבר ניחש מהדפדפן בלי חשבון נכנס מאותו מכשיר, והניחוש עובר לחשבון.
+3. מחלקים מספרים שלמים שסכומם 120. ערך בין 1 ל-3 מקבל אזהרה: אחוז החסימה הוא 3.25%, ורשימה שלא עוברת אותו מקבלת 0.
+4. הניחושים ננעלים אוטומטית ב-07:00 שעון ישראל ביום הבחירות (27 באוקטובר 2026 לקבוצה חדשה), כשהקלפיות נפתחות. מנהל הקבוצה יכול להקדים את הנעילה, לא לאחר אותה. אחרי הנעילה אי אפשר להצטרף או לשנות ניחוש.
+5. התוצאות, רשימת המפלגות והסכמי העודפים משותפים לכל הקבוצות. אותם מושך או מזין רק מי שנכנס עם `ADMIN_SECRET` אל `/admin`. אם המשיכה מוועדת הבחירות נכשלת, מעלים את דף התוצאות מהדפדפן או מזינים מנדטים ידנית.
+6. ברירת המחדל של קבוצה היא אנונימית: הדירוג מציג כינוי, מקום וציון, בלי חלוקת המושבים. מנהל הקבוצה יכול, רק לפני הנעילה ואחרי אזהרה, להעביר אותה ל«פתוחה». אז חברי הקבוצה רואים אחרי הנעילה את הניחוש המלא של כל אחד, ואפשר גם לבחור שזה יוצג כבר לפני הנעילה. כל שמירה נשמרת כגרסה עם שעה, וכל משתתף רואה תמיד את ההיסטוריה שלו. בקבוצה פתוחה החברים רואים גם את ההיסטוריה של האחרים, כציר זמן של מה השתנה. הדירוג הארצי וחוכמת ההמונים נשארים סיכום, בלי ניחוש של אדם, גם בקבוצה פתוחה. מנהל קבוצה יכול להוציא את הקבוצה מהדירוג הארצי. ברירת המחדל היא להופיע.
+
+הציון הראשי הוא **סכום הסטיות המוחלטות**: לכל רשימה לוקחים את ההפרש בלי מינוס ומחברים. מושב שעבר מרשימה לרשימה נספר פעמיים, ולכן בדירוג מוצג גם החצי, **מושבים לא במקום**. נמוך יותר עדיף. אם לשני אנשים אותו ציון, שוברים תיקו לפי מרחק אוקלידי. הוא לא מחליף את הציון הראשי.
+
+על כל רשימה שניחשו נכון אם היא עוברת את אחוז החסימה מורידים משקל קטן. בניחוש, 4 ומעלה אומר «עוברת» ו-0 עד 3 אומר «לא». בתוצאה, כל מספר מושבים גדול מאפס אומר שהרשימה עברה. ברירת המחדל היא 0.25, ומנהל האתר יכול לשנות את המשקל או לשים 0 כדי לכבות את הבונוס. אותו ציון בקבוצה ובדירוג הארצי. הסבר בעברית פשוטה נמצא ב-`/scoring`. מדיניות הפרטיות ב-`/privacy` ותנאי השימוש ב-`/terms`. שניהם ציבוריים, בלי כניסה. הפונקציות חיות ב-`lib/scoring.ts`.
+
+חוכמת ההמונים ב-`/crowd` ובתוך כל קבוצה מראה רק סיכום: ממוצע, חציון, טווח בין הרבעונים, התפלגות קצרה, ואחוז הניחושים שרשימה עוברת את אחוז החסימה. גושים שמנהל האתר מגדיר מקבלים גם את אחוז הניחושים שמגיעים ל-61 מנדטים. הסיכום מופיע רק אחרי מספר ניחושים שלמים (ברירת מחדל 5, ולפחות 2). אפשר להסתיר אותו עד הנעילה. אחרי התוצאות רואים את התוצאה בפועל מול התחזית. הדירוג הארצי כולל רק קבוצות שלא יצאו ממנו.
+
+מנהל קבוצה יכול לקבוע השתתפות בשקלים וחלוקה (ברירת המחדל: המנצח לוקח הכל, או למשל 60/30/10). תיקו מחלק שווה בשווה את המקומות שהתיקו תופס. בדירוג הקבוצה מופיעים גודל הקופה והסכום שמגיע לכל אחד מהראשונים. זה תצוגה בלבד: האתר לא גובה, לא מחזיק ולא מעביר כסף, והחברים מסדרים את התשלום ביניהם. סימון מי שילם גלוי רק למנהל הקבוצה, ולא מופיע בדירוג הארצי.
+
+## הרצה מקומית
+
+```bash
+npm install
+cp .env.example .env.local
+npm test
+npm run dev
+```
+
+תוכנית הבדיקות ליום הבחירות נמצאת ב-`docs/TEST_PLAN.md`. `npm test` מריץ את יחידות ואת האינטגרציה. אחרי `npm run build`, `npm run test:e2e` מריץ את Playwright מול השרת המקומי, בדסקטופ ובטלפון. `LOAD_BASE_URL=http://127.0.0.1:38472 npm run test:load` בודק עומס קריאה קל על אותו שרת. `npm run smoke` שולח רק בקשות GET אל `https://mandates-pool.vercel.app` (או אל `SMOKE_BASE_URL`) ולא יוצר נתונים.
+
+ערכו את `.env.local` והחליפו את `ADMIN_SECRET`. בלי `DATABASE_URL` האפליקציה שומרת על SQLite ב-`data/mandates.db`.
+
+פתחו את דף הבית וצרו קבוצה. הקישור לחברים הוא `/g/<קוד>`. את קישור הניהול שומרים בנפרד. `ADMIN_SECRET` נדרש רק ל-`/admin`.
+
+יצירת קבוצה מוגבלת לחמש קבוצות בשעה מאותה כתובת רשת. שם קבוצה הוא 2 עד 40 תווים.
+
+## הוספה למסך הבית
+
+בכרום או באדג' מופיע «התקנת אפליקציה» או «הוספה למסך הבית». באייפון, בספארי: שיתוף ואז «הוספה למסך הבית». האתר נפתח בעברית מימין לשמאל, בלי חלון הדפדפן. זה אתר (PWA), לא אפליקציה מחנות.
+
+## משתני סביבה
+
+| משתנה | חובה | משמעות |
+| --- | --- | --- |
+| `ADMIN_SECRET` | לניהול האתר | סוד לתוצאות, לרשימות, להסכמי העודפים ולמשקל בונוס החסימה. לא נדרש כדי לפתוח קבוצה. |
+| `CRON_SECRET` | בפרודקשן | וורסל שולחת `Authorization: Bearer <CRON_SECRET>` אל הרענון היומי. |
+| `DATABASE_URL` | על ורסל | מחרוזת Postgres לשימוש רגיל. אצל Neon בורסל זו הכתובת עם `-pooler`. כתובת `*.neon.tech` בלי `-pooler` מוחלפת אליו. |
+| `DATABASE_URL_UNPOOLED` | לא | החיבור הישיר. אינטגרציית Neon בורסל כבר מגדירה אותו. המיגרציה מעדיפה אותו, ואם הוא חסר אז `POSTGRES_URL_NON_POOLING`. |
+| `DATABASE_DIRECT` | לא | לא צריך כשהמשתנה למעלה קיים. `1` מבטל את ההחלפה ל-pooler. מחרוזת Postgres כאן נחשבת לחיבור הישיר. |
+| `RESULTS_SOURCE_URL` | לא | כתובת חלופית לדף התוצאות, אם רוצים לעקוף את ברירת המחדל. |
+| `SQLITE_PATH` | לא | נתיב לקובץ SQLite המקומי. |
+| `AUTH_SECRET` | לכניסה | סוד לחתימת ההתחברות. `openssl rand -base64 32`. בלי זה אין כניסה, והאתר עצמו עולה. מקומית, אם הוא חסר, יש ערך לפיתוח בלבד. |
+| `AUTH_URL` | לא | אפשר להשאיר ריק. `trustHost` לוקח את הכתובת מהבקשה. בורסל זו הדומיין הציבורי, או `VERCEL_URL` של אותו דיפלוי. |
+| `AUTH_GOOGLE_ID` | ל-Google | מזהה לקוח OAuth. בלי שני המשתנים כפתור Google לא מופיע, והאתר עולה. |
+| `AUTH_GOOGLE_SECRET` | ל-Google | סוד לקוח OAuth. |
+| `AUTH_RESEND_KEY` | למייל אמיתי | מפתח [Resend](https://resend.com). בלי מפתח בפרודקשן טופס המייל מוסתר. מחוץ לפרודקשן הקישור מופיע בדף הכניסה. |
+| `EMAIL_FROM` | למייל אמיתי | כתובת שולח מאומתת, למשל `מנדטים <login@example.com>`. |
+
+## פריסה כך שחברים ייכנסו מכתובת ציבורית
+
+SQLite לא נשמר על ורסל. צריך Postgres.
+
+1. צרו מסד ב-[Neon](https://neon.tech) במסלול החינמי, או חברו את Neon מתוך ורסל. האינטגרציה שמה `DATABASE_URL` (עם pooler) וגם `DATABASE_URL_UNPOOLED`. לא צריך להוסיף `DATABASE_DIRECT`.
+2. דחפו את הריפו, אם עוד אין חיבור.
+3. ב-[Vercel](https://vercel.com) בחרו Import Project, וחברו את הריפו. הפריימוורק מזוהה כ-Next.js. מסלול Hobby מספיק.
+4. הגדירו `ADMIN_SECRET`, `CRON_SECRET`, `AUTH_SECRET`, ואת מחרוזות Neon. `AUTH_URL` לא חובה. Google ו-Resend לא חובה: בלי המפתחות הכפתורים פשוט לא מופיעים.
+5. פרסו. בזמן הבנייה, אם יש כתובת Postgres, רצה המיגרציה על החיבור הישיר ורשימת המפלגות נזרעת כשהטבלה ריקה. אותה פעולה רצה שוב בבקשה הראשונה אם הבנייה דילגה. הכתובת תהיה מהצורה `https://<project>.vercel.app`. Web Analytics ו-Speed Insights נטענים מהפריסה בלי משתני סביבה נוספים. מסלול Hobby לא תומך באירועים מותאמים, אז לא נשלחים.
+6. שלחו את `https://<project>.vercel.app`. כל אחד פותח קבוצה מדף הבית. `https://<project>.vercel.app/board` הוא הדירוג הארצי. `https://<project>.vercel.app/admin` מיועד רק למי שמחזיק ב-`ADMIN_SECRET`.
+
+## מסלול חינמי בליל הבחירות
+
+האתר בנוי ל-Vercel Hobby ול-Neon החינמי, בלי להסתמך על cron תכוף.
+
+- Hobby מריץ משימה מתוזמנת פעם ביום לכל היותר. `vercel.json` קובע `0 3 * * *` על `/api/cron/refresh-results`. עדכון כל שעתיים הוא קריאה חיצונית לאותו נתיב: `GET` או `POST` עם הכותרת `Authorization: Bearer <CRON_SECRET>`. הקריאה לא דורסת תוצאה שמורה אם מה שנמשך ישן יותר, עם פחות קולות, או עם אחוז ספירה נמוך יותר. תוצאה שמסומנת סופית נשארת, והקריאה חוזרת בלי למשוך שוב.
+- פתיחת הדירוג הארצי (`GET /api/leaderboard`) או דירוג הקבוצה הציבורי (`GET /api/groups/[code]/standings`) בודקת אם מותר למשוך. מנעול על `last_fetch_attempt_at` מבטיח משיכה אחת לכל היותר בכל שלוש דקות, לכל המבקרים יחד.
+- רענון של דף קבוצה נשאר קצר. הנתיב `/api/cron/refresh-results` רץ עד 60 שניות. הקריאה לקורא ה-HTML היא עד 45 שניות, עם ניסיון שני רק אם הראשון נכשל מהר. אם הזמן נגמר, חוזר JSON והתוצאה השמורה נשארת.
+- הדירוג של כל קבוצה והדירוג הארצי מחושבים פעם אחת כשמשתנים התוצאה, הניחושים, משקל הבונוס או רשימת הקבוצות, ונשמרים ב-`board_cache`. אחר כך קוראים את הצילום.
+- התשובות הציבוריות נשלחות עם `Cache-Control: public, max-age=0, s-maxage=30, stale-while-revalidate=120`. הדפדפן לא שומר אותן. ה-CDN יכול להחזיק חצי דקה, ועוד שתי דקות של עותק ישן בזמן שהוא מרענן.
+- הניחוש הפרטי הוא `GET /api/groups/[code]/me` עם `private, no-store`. הוא לא מושך את ועדת הבחירות, והדף מבקש אותו רק כשחותמת התוצאות משתנה.
+- החיבור ל-Neon הוא `@neondatabase/serverless`, חיבור אחד לכל מופע (`max: 1`), דרך ה-pooler. כך לא אוכלים את מכסת החיבורים הישירים של המסלול החינמי.
+- קיבולת צפויה: עשרות קבוצות ואלפי ניחושים שלמים הם מעבר אחד בזיכרון. הבדיקה מריצה 120 ניחושים בנוחות. מה שיקר הוא המשיכה מוועדת הבחירות, והיא מוגבלת לפעם בשלוש דקות לכל האתר. בליל הבחירות רוב הקריאות לדירוג נענות מה-CDN ומהצילום שבמסד.
+- הכניסה נשמרת באותו מסד Neon, בלי שירות משתמשים נוסף. Google OAuth הוא בחינם. Resend במסלול החינמי, נכון ל-2026, שולח בערך 3,000 מיילים בחודש ועד 100 ביום, עם דומיין מאומת אחד. הכתובת `onboarding@resend.dev` שולחת רק אל המייל של חשבון Resend עצמו, ומתאימה לבדיקה. חברים אמיתיים צריכים דומיין מאומת ו-`EMAIL_FROM` עליו.
+
+## כניסה
+
+Auth.js (חבילת `next-auth`) עם שתי דרכים, בלי סיסמה שנשמרת אצלנו:
+
+- **Google.** ב-[Google Cloud Console](https://console.cloud.google.com/) יוצרים פרויקט, מסך הסכמה, ואז Credentials → OAuth client ID → Web application. ה-redirect הוא `https://<הכתובת>/api/auth/callback/google`, ומקומית גם `http://localhost:38471/api/auth/callback/google` אם מריצים על הפורט הזה. מעתיקים את המזהה ואת הסוד אל `AUTH_GOOGLE_ID` ו-`AUTH_GOOGLE_SECRET`.
+- **קישור למייל.** ב-[Resend](https://resend.com) יוצרים מפתח API אל `AUTH_RESEND_KEY`, מאמתים דומיין, ושמים את הכתובת השולחת ב-`EMAIL_FROM`. הקישור חד-פעמי ובתוקף לשעה. אותו מייל ב-Google ובקישור נכנס לאותו חשבון.
+- מקומית בלי המפתחות: כפתור Google מוסתר, והקישור למייל מופיע בדף `/signin` אחרי השליחה. זה לא קורה כש-`NODE_ENV` הוא `production`.
+
+חשבון יכול להצטרף לכמה קבוצות. בכל קבוצה יש ניחוש אחד וכינוי אחד. ניחוש ישן שנשמר רק בעוגייה בדפדפן עובר לחשבון בכניסה מאותו מכשיר, והעוגייה הישנה מפסיקה לפתוח אותו. מנהל הקבוצה הוא החשבון שיצר אותה. קישור הגיבוי נשאר, ומי שמחזיק בו עדיין יכול לנהל.
+
+## רשימת המפלגות
+
+הזרע הוא 13 הרשימות שמתמודדות על מושבים **לכנסת ה-26**: הליכוד (מחל), ביחד (רק), ישר! (דרך), הדמוקרטים (אמת), ש"ס (שס), יהדות התורה (ג), עוצמה יהודית (ב), ישראל ביתנו (ל), הציונות הדתית וזהות (ט), רע"ם (עם), הרשימה המשותפת (ודם), המילואימניקים (די), עמך ישראל (ך). ועדת הבחירות אישרה 38 רשימות ב-27 בספטמבר 2026. כחול לבן (כן) ואחי (צבי) פרשו, ו-36 רצות. רע"ם והרשימה המשותפת אושרו סופית בבג"ץ ב-2 באוקטובר 2026.
+
+הניחוש הוא רק על 13 הרשימות האלה. 23 הרשימות הקטנות מוכרות למפרש התוצאות: הקולות שלהן נספרים לאחוז החסימה ולבאדר-עופר, ובדרך כלל הן מקבלות 0 מנדטים. אם אחת מהן עוברת את החסימה ומקבלת מושבים, הניחוש עליה נחשב 0 והדירוג ממשיך. רשימה שאינה מוכרת ועדיין מקבלת מושבים עוצרת את הדירוג עד שממפים אותה.
+
+חמישה הסכמי עודפים חתומים נטענים במיגרציה אם הם חסרים: מחל–ט, רק–ל, דרך–אמת, שס–ג, עם–ודם. מיגרציה חוזרת לא מוחקת נתונים ולא משכפלת הסכם. אחרי הטעינה הראשונה, מחיקה או שינוי של מנהל האתר נשמרים. מנהל האתר עדיין מוסיף, מוחק ומשנה שמות, אותיות והסכמים, והשינוי חל על כל הקבוצות.
+
+## מאיפה מגיעות התוצאות
+
+נבדק ב-28 באוקטובר 2026, למחרת הבחירות לכנסת ה-26. התוצאות הסופיות אמורות להתפרסם ברשומות עד 4 בנובמבר 2026.
+
+- `https://votes26.bechirot.gov.il/nationalresults` עלה. משרת מחוץ לישראל מקבל אתגר WAF של קלאודפרונט (HTTP 202) או דף חסימה של gov.il, לא את הטבלה. אחרי זה נקרא אותו דף רשמי דרך קורא HTML (`RESULTS_READER_URL`, ברירת מחדל `https://r.jina.ai/`).
+- הדף של 2026 הוא HTML. בכרטיסים: בעלי זכות בחירה, קולות עד עתה, קלפיות, קולות כשרים, קולות פסולים. בטבלה: שם, אותיות, אחוז, קולות. אין עמודת מנדטים בספירה חלקית, ואין אחוז ספירה מפורש. השורה «תוצאות נכון ל-» היא חותמת הזמן. «התוצאות הסופיות … יפורסמו» היא לוח הזמנים החוקי, לא סימון שהספירה נסגרה.
+- `fixtures/votes26-national.html` הוא קטע מהדף נכון ל-28.10.2026 12:32 (שעון ישראל). אפשר להעלות אותו ידנית אם המשיכה נכשלת.
+
+המפרש נבדק מול `fixtures/votes25-national.html`: שחזור הטבלה הרשמית של 2022, 40 רשימות, 4,764,742 קולות כשרים. אם המקור החי חסום גם מורסל, המנהל שומר את דף התוצאות מהדפדפן ומעלה אותו, או מזין מנדטים ידנית. ההזנה הידנית תמיד עובדת, והיא עוצרת את הדריסה האוטומטית עד שלוחצים «ביטול העקיפה».
+
+מיפוי מהמקור אל הרשימות הוא לפי אותיות הפתק, ואחר כך לפי שם או מילות זיהוי. רשימה קטנה מוכרת לא עוצרת את הדירוג. רשימה לא מוכרת שקיבלה מושבים מופיעה באזהרה, והדירוג מחכה עד שממפים אותה.
+
+### באדר-עופר
+
+אם בדף אין מנדטים, או שהמנהל ביקש לחשב בעצמנו:
+
+1. רשימה מתחת ל-3.25% מכלל הקולות הכשרים יוצאת. ההשוואה היא `votes * 400 >= valid * 13`.
+2. המודד הוא החלק השלם של קולות הרשימות שעברו, חלקי 120.
+3. כל רשימה מקבלת `floor(קולות / מודד)` לבד.
+4. המנדטים שנשארו מחולקים אחד-אחד למי ש-`קולות / (מנדטים + 1)` הכי גבוה. הסכם עודפים מתחרה כזוג (סכום הקולות וסכום המושבים), והמושב שהזוג זוכה בו הולך לשותף עם המנה הגבוהה יותר. שותף מתחת לסף מבטל את ההסכם.
+
+ב-2022 נשארו 7 מנדטים אחרי השלב הראשון. עם ההסכמים שבתוקף (הליכוד–הציונות הדתית, יש עתיד–המחנה הממלכתי, ש"ס–יהדות התורה; העבודה–מרצ בטל כי מרצ נפלה) החישוב משחזר את כל 120 המושבים הרשמיים, כולל 32 לליכוד. בלי ההסכמים יוצא 31 לליכוד ו-5 לעבודה. הסכמי 2026 החתומים נטענים עם המיגרציה: מחל–ט, רק–ל, דרך–אמת, שס–ג, עם–ודם. הם לא מופיעים בדף התוצאות, ומנהל האתר יכול לערוך אותם.
+
+שוויון במנה נשבר לטובת מי שיש לו יותר קולות, ואז לפי מזהה יציב. בחוק שוויון מלא מוכרע בהגרלה. זה לא השפיע על 2022.
+
+אחוז הקולות שנספרו מוצג בנפרד משיעור ההצבעה. כל עוד הוועדה לא סימנה תוצאות סופיות, הדירוג מסומן כארעי.
+
+---
+
+# Mandatim
+
+A Hebrew, right-to-left site for predicting how the 120 Knesset seats will split. Anyone can open a named group. It is an installable site (add to home screen), not an app-store app.
+
+## Rules
+
+The homepage creates a group after sign-in. The creator's account is that group's admin, and a backup admin link is shown once. `ADMIN_SECRET` is only for the shared official results, the party list, and surplus agreements. Those are the same for every group.
+
+Participants sign in with Google or an email magic link, then pick a nickname for that group. There is no password. One account can join many groups, with one bet and one nickname in each. The nickname is the only public identifier. Email addresses are not shown to other participants or to the group admin. A bet saved in a browser before accounts existed is claimed by signing in on that same device, and the old cookie stops opening it. Guesses are whole numbers totaling 120. Values from 1 to 3 warn that they cannot occur under the 3.25% threshold.
+
+Guesses lock automatically at 07:00 Asia/Jerusalem on election day, when polling stations open. A new group defaults to 27 October 2026. The group admin can set an earlier lock, and cannot keep guesses open past polls opening. The clock follows Israel daylight saving time. After the lock, joining and editing are rejected on the server.
+
+A group is anonymous by default: its board shows nickname, rank, and score, not the seat split. Before the lock, and only after a warning, the group admin can switch it to open. Members of an open group then see each person's full per-party bet after the lock, or before the lock as well if the admin chose that. Every save is stored as a timestamped version. A participant can always see their own history. In an open group, members also see each other's history as a timeline of what changed. The change of rule is logged, and it cannot be made after the lock. The national board and the crowd dashboard stay aggregate even for an open group. `GET /api/leaderboard` and `GET /api/groups/[code]/standings` return public fields with a short CDN cache and never a seat vector. `GET /api/groups/[code]/me` is the private bet, including that person's history, and is `Cache-Control: private, no-store`. The national board is paginated (40 rows). Groups are included unless their admin opts out.
+
+Public creation allows 5 new groups per hour per network address. A group name is 2 to 40 characters.
+
+The primary score is the **sum of absolute seat errors**. A seat that moves from one list to another is counted twice, so the boards also show half of that sum as **seats placed wrong**. Lower is better. Euclidean distance breaks ties only. It does not replace the primary score.
+
+A small bonus is subtracted for each party whose pass or fail of the electoral threshold was called correctly. A guess of 4 or more means “passes”; 0–3 means “fails”. Any positive official seat total means the list passed. The default weight is 0.25. The site admin can change it, and 0 turns the bonus off. Group boards and the national board use the same score. A plain-Hebrew explanation is at `/scoring`. The functions live in `lib/scoring.ts`.
+
+The wisdom-of-the-crowd pages at `/crowd` and inside each group show aggregates only: mean, median, interquartile range, a short histogram, and the share of complete bets that have a list passing the threshold. Blocs configured by the site admin also show how often bettors give that bloc 61 seats. Aggregates stay hidden until enough complete bets exist (default 5, and never below 2). The site admin can hide the dashboard until bets lock. After results arrive, the actual total is drawn on the crowd forecast. The site-wide crowd includes only groups that stayed on the national board.
+
+A group admin can set a buy-in in shekels and a payout split (winner takes all by default, or for example 60/30/10). A tie splits the places it occupies evenly. The group board shows the pot and what each top finisher is due. That is display only: the site never collects, holds, or transfers money, and friends settle privately. A paid mark is visible only to the group admin and is not on the national board.
+
+## Local
+
+```bash
+npm install
+cp .env.example .env.local
+npm test
+npm run dev
+```
+
+The election-day checklist is `docs/TEST_PLAN.md`. `npm test` runs the unit and integration suite. After `npm run build`, `npm run test:e2e` runs Playwright against the local production server, on desktop and mobile viewports. `LOAD_BASE_URL=http://127.0.0.1:38472 npm run test:load` is a short read-only load check of that same server. `npm run smoke` sends GET requests only to `https://mandates-pool.vercel.app` (or `SMOKE_BASE_URL`) and does not create data.
+
+Without `DATABASE_URL`, data is stored in SQLite at `data/mandates.db`. Open the homepage to create a group. Set `ADMIN_SECRET` before using `/admin`.
+
+Install from Chrome or Edge with “Install app” / “Add to home screen”. On iPhone, use Safari’s Share sheet and “Add to Home Screen”. The installed site stays Hebrew and right-to-left.
+
+## Deploy so friends have a public URL
+
+1. Create a Postgres database on the [Neon](https://neon.tech) free plan, or attach Neon from the Vercel project. The integration sets `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED`. `DATABASE_DIRECT` is unnecessary. A `*.neon.tech` host without `-pooler` is still rewritten to the pooler for ordinary queries.
+2. Push this repo.
+3. Import it on [Vercel](https://vercel.com) as a Next.js app. The Hobby plan is enough.
+4. Set `ADMIN_SECRET`, `CRON_SECRET`, `AUTH_SECRET`, and the Neon URLs. Leave `AUTH_URL` empty: `trustHost` uses the request host, and `VERCEL_URL` covers a request that only has the deployment host. Google and Resend are optional. Without their keys those buttons stay hidden and the site still boots. SQLite will not persist on Vercel; the app refuses to boot there without a Postgres URL.
+5. Deploy. The build runs the schema migration when a Postgres URL is present, on the direct URL, and seeds the parties list when that table is empty. The first request migrates again if the build skipped it. Share `https://<project>.vercel.app`. People create their own groups there. `/board` is the national leaderboard. `/scoring` explains the score in Hebrew. `/privacy` and `/terms` are public static pages for the Google OAuth consent screen. `/admin` is only for the `ADMIN_SECRET` holder. Web Analytics and Speed Insights load from the deployment with no extra environment variables. Hobby does not support custom events, so the app does not send any.
+
+## Free tier on election night
+
+The app is meant to run on Vercel Hobby and Neon’s free plan, without a frequent cron.
+
+- Hobby runs a scheduled job at most once a day. `vercel.json` sets `0 3 * * *` on `/api/cron/refresh-results`. A refresh every two hours is an external `GET` or `POST` to that path with `Authorization: Bearer <CRON_SECRET>`. The call does not replace a stored count with an older file, fewer votes, or a lower counted percent. A snapshot marked final stays, and the call returns without fetching again.
+- Opening the national board (`GET /api/leaderboard`) or a public group board (`GET /api/groups/[code]/standings`) checks a lock on `last_fetch_attempt_at`. The Central Elections Committee is fetched at most once every three minutes, across all visitors.
+- A group-page refresh stays short. `/api/cron/refresh-results` may run for 60 seconds. The HTML reader gets up to 45 seconds, and a second try only if the first one fails quickly. A timeout returns JSON and leaves the stored count in place.
+- Group boards and the national board are computed once per change of results, guesses, bonus weight, or group list, and stored in `board_cache`. Later reads serve that snapshot.
+- Public responses use `Cache-Control: public, max-age=0, s-maxage=30, stale-while-revalidate=120`. Browsers do not keep them. The CDN may keep them for 30 seconds, plus two minutes of a stale copy while it refreshes.
+- A person’s own bet is `GET /api/groups/[code]/me` with `private, no-store`. That route does not fetch the committee, and the page asks for it only when the results timestamp changes.
+- Neon uses `@neondatabase/serverless` with one connection per instance (`max: 1`) through the pooler, so the free plan’s direct-connection quota stays unused.
+- Expected capacity: dozens of groups and thousands of complete guesses are one in-memory pass. The test suite scores 120 guesses comfortably. The expensive step is the committee fetch, and that is limited to once every three minutes for the whole site. On election night most leaderboard reads are answered by the CDN and the stored snapshot.
+- Sign-in sessions live in the same Neon database. Google OAuth is free. Resend's free tier, as of 2026, is about 3,000 emails a month and 100 a day, with one verified domain. `onboarding@resend.dev` delivers only to the Resend account's own address, which is enough for a test. Real friends need a verified domain and `EMAIL_FROM` on it.
+
+## Sign-in
+
+Auth.js (`next-auth`) offers two passwordless options. Nothing here stores a password.
+
+- **Google.** In [Google Cloud Console](https://console.cloud.google.com/) create a project, configure the consent screen, then Credentials → OAuth client ID → Web application. The redirect URI is `https://<host>/api/auth/callback/google`. For this local port also add `http://localhost:38471/api/auth/callback/google`. Put the client id and secret in `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`.
+- **Email magic link.** Create an API key at [Resend](https://resend.com) and set `AUTH_RESEND_KEY`. Verify a domain and set `EMAIL_FROM` to an address on it. The link works once and expires after an hour. The same email on Google and on the magic link is the same account.
+- Locally, with those keys unset, the Google button is hidden and the magic link is printed on `/signin` after you ask for it. That inbox is not rendered when `NODE_ENV` is `production`. In production, a missing `AUTH_RESEND_KEY` hides the email form instead of failing the build.
+
+Generate `AUTH_SECRET` with `openssl rand -base64 32`. `AUTH_URL` can stay unset on Vercel.
+
+An account can join several groups. Each group has one bet and one nickname. A legacy cookie bet is claimed when that person signs in on the same device, and the cookie can no longer open it. The account that created a group is its admin. The backup link still works for whoever holds it.
+
+## Parties
+
+The seed is the 13 lists people bet on for the **26th Knesset**: Likud (מחל), Beyachad (רק), Yashar! (דרך), The Democrats (אמת), Shas (שס), United Torah Judaism (ג), Otzma Yehudit (ב), Yisrael Beiteinu (ל), Religious Zionism–Zehut (ט), Ra'am (עם), the Joint List (ודם), the Miluimnikim list (די), and Amkha (ך). The Central Elections Committee approved 38 lists on 27 September 2026. Blue and White (כן) and Achi (צבי) withdrew, so 36 lists are running. The Supreme Court cleared Ra'am and the Joint List on 2 October 2026.
+
+Bets stay on those 13 lists. Twenty-three minor lists are known to the results parser: their votes count toward the 3.25% threshold and toward Bader-Ofer, and they normally receive 0 seats. If one of them crosses the threshold and wins seats, every bet is scored as 0 for that list and the leaderboard keeps ranking. A list that is not in the catalog and still wins seats pauses ranking until it is mapped.
+
+Five signed surplus agreements are inserted by the migration when that ballot pair is missing: מחל–ט, רק–ל, דרך–אמת, שס–ג, עם–ודם. A later migration does not delete data and does not duplicate a pair. After that first seed, an admin deletion or edit is kept. The site admin can still add, rename, and remove lists and agreements, and the change applies to every group. A list that already has guesses cannot be deleted.
+
+## Official results
+
+Checked on 28 October 2026, the day after the 26th-Knesset election. Final results are due in Reshumot by 4 November 2026.
+
+- `https://votes26.bechirot.gov.il/nationalresults` is up. A server outside Israel receives a CloudFront WAF challenge (HTTP 202) or the gov.il block page, not the table. The same official URL is then read as HTML through `RESULTS_READER_URL` (default `https://r.jina.ai/`).
+- The 2026 page is HTML. Cards give eligible voters, ballots so far, polling stations, valid votes, and invalid votes. The table is name, ballot letters, percent, and votes. A partial count has no mandate column and no explicit percent-counted figure. The line "results as of" is the timestamp. "Final results will be published…" is the legal deadline, not a closed count.
+- `fixtures/votes26-national.html` is the results region of that page as of 28 Oct 2026 12:32 Israel time. Upload it by hand if the fetch fails.
+
+The parser is tested against `fixtures/votes25-national.html`, a reconstruction of the official 2022 national table (40 lists, 4,764,742 valid votes) because the live host could not be downloaded through the WAF. If Vercel is blocked too, the admin uploads the HTML saved from a browser, or enters seats by hand. Manual entry always works and pauses automatic overwrite until "resume" is clicked.
+
+Lists are matched by ballot letters, then by name or admin match-keys. A known minor list does not pause ranking. An unknown list that wins seats is warned about, and ranking waits until it is mapped.
+
+### Bader-Ofer
+
+Used when the page has votes but no usable mandate column, or when the admin forces computation:
+
+1. Drop lists under 3.25% of all valid votes (`votes * 400 >= valid * 13`).
+2. The measure is `floor(qualifying votes / 120)`.
+3. Each qualifying list gets `floor(votes / measure)` on its own.
+4. Remaining seats go one at a time to the highest `votes / (seats + 1)`. A surplus agreement competes as one pool; the seat it wins goes to the partner with the higher individual quotient. A partner below the threshold voids the agreement.
+
+For 2022 the first stage left 7 seats. With the agreements that were actually in force (Likud–Religious Zionism, Yesh Atid–National Unity, Shas–United Torah Judaism; Labor–Meretz void because Meretz missed the threshold) the allocator reproduces all official seat totals, including Likud 32. Without agreements Likud gets 31 and Labor 5. The signed 2026 agreements are loaded by the migration: מחל–ט, רק–ל, דרך–אמת, שס–ג, עם–ודם. They are not printed on the results page, and the site admin can edit them.
+
+Exact ties go to the list with more votes, then a stable id. The statute uses a lottery for a true tie. That did not affect 2022.
+
+"Percent of votes counted" is shown separately from turnout. Until the committee marks the count final, the board is labeled provisional.

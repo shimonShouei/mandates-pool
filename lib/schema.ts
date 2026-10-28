@@ -1,0 +1,190 @@
+export const SCHEMA_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS site (
+    id TEXT PRIMARY KEY,
+    knesset_number INTEGER NOT NULL DEFAULT 26,
+    prefer_computed_seats INTEGER NOT NULL DEFAULT 0,
+    results_override INTEGER NOT NULL DEFAULT 0,
+    last_fetch_attempt_at TEXT,
+    last_fetch_error TEXT,
+    board_revision INTEGER NOT NULL DEFAULT 0,
+    threshold_bonus REAL NOT NULL DEFAULT 0.25,
+    crowd_min_bets INTEGER NOT NULL DEFAULT 5,
+    crowd_before_lock INTEGER NOT NULL DEFAULT 1
+  )`,
+  `CREATE TABLE IF NOT EXISTS groups (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    code TEXT NOT NULL UNIQUE,
+    deadline TEXT,
+    election_start TEXT,
+    public_board INTEGER NOT NULL DEFAULT 1,
+    admin_token_hash TEXT,
+    owner_user_id TEXT,
+    stake_agorot INTEGER NOT NULL DEFAULT 0,
+    payout_split TEXT NOT NULL DEFAULT '100',
+    bet_visibility TEXT NOT NULL DEFAULT 'anonymous',
+    reveal_before_lock INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS parties (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    ballot TEXT NOT NULL DEFAULT '',
+    color TEXT NOT NULL,
+    sort_order INTEGER NOT NULL,
+    match_keys TEXT NOT NULL DEFAULT '[]',
+    bettable INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS participants (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    name_key TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    paid INTEGER NOT NULL DEFAULT 0,
+    user_id TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE(group_id, name_key)
+  )`,
+  `CREATE TABLE IF NOT EXISTS predictions (
+    participant_id TEXT NOT NULL,
+    party_id TEXT NOT NULL,
+    seats INTEGER NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (participant_id, party_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS surplus_agreements (
+    id TEXT PRIMARY KEY,
+    party_a_id TEXT NOT NULL,
+    party_b_id TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS result_snapshots (
+    id TEXT PRIMARY KEY,
+    fetched_at TEXT NOT NULL,
+    status TEXT NOT NULL,
+    source TEXT NOT NULL,
+    seat_method TEXT NOT NULL,
+    source_url TEXT,
+    counted_percent REAL,
+    turnout_percent REAL,
+    eligible_voters INTEGER,
+    ballots_cast INTEGER,
+    valid_votes INTEGER,
+    invalid_votes INTEGER,
+    is_current INTEGER NOT NULL DEFAULT 1,
+    scoreable INTEGER NOT NULL DEFAULT 0,
+    note TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS result_rows (
+    id TEXT PRIMARY KEY,
+    snapshot_id TEXT NOT NULL,
+    party_id TEXT,
+    source_name TEXT NOT NULL,
+    source_ballot TEXT NOT NULL DEFAULT '',
+    votes INTEGER,
+    official_seats INTEGER,
+    seats INTEGER NOT NULL,
+    passed_threshold INTEGER NOT NULL,
+    mapped INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS creation_log (
+    id TEXT PRIMARY KEY,
+    ip_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS blocs (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    sort_order INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS bloc_parties (
+    bloc_id TEXT NOT NULL,
+    party_id TEXT NOT NULL,
+    PRIMARY KEY (bloc_id, party_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    email TEXT NOT NULL UNIQUE,
+    email_verified TEXT,
+    image TEXT,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS auth_accounts (
+    user_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    provider_account_id TEXT NOT NULL,
+    refresh_token TEXT,
+    access_token TEXT,
+    expires_at INTEGER,
+    token_type TEXT,
+    scope TEXT,
+    id_token TEXT,
+    session_state TEXT,
+    PRIMARY KEY (provider, provider_account_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS auth_sessions (
+    session_token TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    expires TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS auth_verification_tokens (
+    identifier TEXT NOT NULL,
+    token TEXT NOT NULL,
+    expires TEXT NOT NULL,
+    PRIMARY KEY (identifier, token)
+  )`,
+  `CREATE TABLE IF NOT EXISTS dev_mailbox (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    url TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS board_cache (
+    id TEXT PRIMARY KEY,
+    cache_key TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    computed_at TEXT NOT NULL,
+    lock_until TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS bet_versions (
+    id TEXT PRIMARY KEY,
+    participant_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    saved_at TEXT NOT NULL,
+    seats TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS schema_seeds (
+    id TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS visibility_log (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL,
+    changed_at TEXT NOT NULL,
+    from_visibility TEXT NOT NULL,
+    to_visibility TEXT NOT NULL,
+    from_reveal INTEGER NOT NULL,
+    to_reveal INTEGER NOT NULL,
+    via TEXT NOT NULL
+  )`,
+];
+
+export const INDEX_STATEMENTS = [
+  `CREATE INDEX IF NOT EXISTS idx_parties_sort ON parties(sort_order, name)`,
+  `CREATE INDEX IF NOT EXISTS idx_participants_group ON participants(group_id)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_participants_group_user ON participants(group_id, user_id) WHERE user_id IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_auth_accounts_user ON auth_accounts(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_predictions_participant ON predictions(participant_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_groups_public ON groups(public_board, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_rows_snapshot ON result_rows(snapshot_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_creation_log_ip ON creation_log(ip_hash, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_bet_versions_participant ON bet_versions(participant_id, saved_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_bet_versions_group ON bet_versions(group_id, saved_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_visibility_log_group ON visibility_log(group_id, changed_at)`,
+];

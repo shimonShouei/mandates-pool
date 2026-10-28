@@ -1,0 +1,1377 @@
+import { safeEqual } from "./auth";
+import { exposureLevel, membersCanSeeBets, parseSeatJson, revisionsFromVersions } from "./bet-history";
+import type { Db } from "./db";
+import { cleanDisplayName, hashToken, nameKey, newCode, newId, newToken } from "./ids";
+import type {
+  AdminParticipant,
+  BetRevision,
+  BetVisibility,
+  OwnPrediction,
+  OwnView,
+  PublicGroupState,
+  PublicResults,
+  RevealedBet,
+} from "./public-state";
+import { decideSeats, type PartyRef } from "./results/decide";
+import type { ParsedList, ParsedResults } from "./results/parse-cec";
+import { cleanCrowdMin, DEFAULT_CROWD_MIN } from "./crowd";
+import { parsePayoutSplit, parseStoredSplit } from "./payout";
+import { cleanThresholdBonus, roundScore, scoreGuess, DEFAULT_THRESHOLD_BONUS } from "./scoring";
+import { KNESSET_SEATS, checkSeatVector } from "./seats";
+import { formatNumber } from "./format";
+import { betsLocked, isLocked, lockSchedule, pollsOpenIso } from "./time";
+
+export class GameError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GameError";
+  }
+}
+
+export type Party = {
+  id: string;
+  name: string;
+  ballot: string;
+  color: string;
+  sortOrder: number;
+  matchKeys: string[];
+  /** False for a minor list that is recognized in the results and is not on the bet slip. */
+  bettable: boolean;
+};
+
+export type Agreement = {
+  id: string;
+  partyAId: string;
+  partyBId: string;
+  partyAName: string;
+  partyBName: string;
+};
+
+type GroupRow = {
+  id: string;
+  name: string;
+  code: string;
+  deadline: string | null;
+  election_start: string | null;
+  public_board: number;
+  admin_token_hash: string | null;
+  owner_user_id: string | null;
+  stake_agorot: number | null;
+  payout_split: string | null;
+  bet_visibility: string | null;
+  reveal_before_lock: number | null;
+  created_at: string;
+};
+
+export type SiteSettings = {
+  knessetNumber: number;
+  preferComputed: boolean;
+  resultsOverride: boolean;
+  lastFetchAttemptAt: string | null;
+  fetchError: string | null;
+  thresholdBonus: number;
+  crowdMinBets: number;
+  crowdBeforeLock: boolean;
+};
+
+type SnapshotRow = {
+  id: string;
+  fetched_at: string;
+  status: "provisional" | "final";
+  source: "official" | "upload" | "manual";
+  seat_method: PublicResults["seatMethod"];
+  source_url: string | null;
+  counted_percent: number | null;
+  turnout_percent: number | null;
+  eligible_voters: number | null;
+  ballots_cast: number | null;
+  valid_votes: number | null;
+  invalid_votes: number | null;
+  scoreable: number;
+  note: string | null;
+};
+
+type ResultRow = {
+  id: string;
+  party_id: string | null;
+  source_name: string;
+  source_ballot: string;
+  votes: number | null;
+  official_seats: number | null;
+  seats: number;
+  passed_threshold: number;
+  mapped: number;
+};
+
+export async function createGroup(
+  db: Db,
+  name: string,
+  deadlineIso: string | null = null,
+  electionStartIso: string | null = null,
+  ownerUserId: string | null = null,
+) {
+  const raw = name.normalize("NFKC");
+  if (/[\u0000-\u001f]/.test(raw)) throw new GameError("שם הקבוצה צריך להיות בין 2 ל-40 תווים.");
+  const clean = raw.replace(/\s+/g, " ").trim();
+  if (clean.length < 2 || clean.length > 40) {
+    throw new GameError("שם הקבוצה צריך להיות בין 2 ל-40 תווים.");
+  }
+  const electionStart = electionStartIso ?? pollsOpenIso();
+  if (Number.isNaN(Date.parse(electionStart))) throw new GameError("שעת פתיחת הקלפיות לא תקינה.");
+  const adminToken = newToken();
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const id = newId();
+    const code = newCode();
+    const now = new Date().toISOString();
+    try {
+      await db.run(
+        `INSERT INTO groups (id, name, code, deadline, election_start, public_board, admin_token_hash, owner_user_id, created_at)
+         VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+        [id, clean, code, deadlineIso, electionStart, hashToken(adminToken), ownerUserId, now],
+      );
+      return { id, code, name: clean, adminToken };
+    } catch (error) {
+      if (isUnique(error) && attempt < 4) continue;
+      throw error;
+    }
+  }
+  throw new GameError("לא הצלחנו ליצור קוד קבוצה.");
+}
+
+export async function listGroups(db: Db) {
+  const rows = await db.all<GroupRow>(`SELECT * FROM groups ORDER BY created_at DESC`);
+  return rows.map(presentGroup);
+}
+
+export async function getGroupByCode(db: Db, code: string) {
+  const row = await db.get<GroupRow>(`SELECT * FROM groups WHERE code = ?`, [code.trim().toUpperCase()]);
+  return row ? presentGroup(row) : null;
+}
+
+export async function getGroupById(db: Db, id: string) {
+  const row = await db.get<GroupRow>(`SELECT * FROM groups WHERE id = ?`, [id]);
+  return row ? presentGroup(row) : null;
+}
+
+export async function updateGroup(
+  db: Db,
+  groupId: string,
+  patch: {
+    name?: string;
+    deadline?: string | null;
+    electionStart?: string;
+    publicBoard?: boolean;
+    stakeAgorot?: number;
+    payoutSplit?: number[];
+  },
+) {
+  const group = await mustGroup(db, groupId);
+  let name = group.name;
+  if (patch.name != null) {
+    const raw = patch.name.normalize("NFKC");
+    if (/[\u0000-\u001f]/.test(raw)) throw new GameError("שם הקבוצה צריך להיות בין 2 ל-40 תווים.");
+    name = raw.replace(/\s+/g, " ").trim();
+  }
+  if (name.length < 2 || name.length > 40) throw new GameError("שם הקבוצה צריך להיות בין 2 ל-40 תווים.");
+  const electionStart = patch.electionStart ?? group.electionStart;
+  if (Number.isNaN(Date.parse(electionStart))) throw new GameError("שעת פתיחת הקלפיות לא תקינה.");
+  let stakeAgorot = group.stakeAgorot;
+  if (patch.stakeAgorot != null) {
+    if (!Number.isInteger(patch.stakeAgorot) || patch.stakeAgorot < 0 || patch.stakeAgorot > 10_000_000) {
+      throw new GameError("סכום ההשתתפות צריך להיות בין 0 ל-100000 שקלים.");
+    }
+    stakeAgorot = patch.stakeAgorot;
+  }
+  let payoutSplit = group.payoutSplit;
+  if (patch.payoutSplit != null) {
+    try {
+      payoutSplit = parsePayoutSplit(patch.payoutSplit.join("/"));
+    } catch (error) {
+      throw new GameError(error instanceof Error ? error.message : "החלוקה לא תקינה.");
+    }
+  }
+  await db.run(
+    `UPDATE groups SET name = ?, deadline = ?, election_start = ?, public_board = ?, stake_agorot = ?, payout_split = ? WHERE id = ?`,
+    [
+      name,
+      patch.deadline === undefined ? group.deadline : patch.deadline,
+      electionStart,
+      patch.publicBoard == null ? (group.publicBoard ? 1 : 0) : patch.publicBoard ? 1 : 0,
+      stakeAgorot,
+      payoutSplit.join("/"),
+      groupId,
+    ],
+  );
+  await touchBoard(db);
+}
+
+export async function updateGroupAsAdmin(
+  db: Db,
+  groupId: string,
+  token: string | null,
+  patch: {
+    name?: string;
+    deadline?: string | null;
+    electionStart?: string;
+    publicBoard?: boolean;
+    stakeAgorot?: number;
+    payoutSplit?: number[];
+  },
+  userId: string | null = null,
+) {
+  if (!(await isGroupAdmin(db, groupId, token, userId))) {
+    throw new GameError("נדרש החשבון שפתח את הקבוצה, או קישור הניהול.");
+  }
+  await updateGroup(db, groupId, patch);
+}
+
+export type VisibilityChange = {
+  changedAt: string;
+  fromVisibility: BetVisibility;
+  toVisibility: BetVisibility;
+  fromRevealBeforeLock: boolean;
+  toRevealBeforeLock: boolean;
+  via: "account" | "backup";
+};
+
+/**
+ * Anonymous stays the default. Opening a group, or showing bets before the lock,
+ * is only allowed while bets are still open, and only with an explicit confirm.
+ */
+export async function setBetVisibility(
+  db: Db,
+  groupId: string,
+  token: string | null,
+  userId: string | null,
+  next: { visibility: BetVisibility; revealBeforeLock: boolean },
+  confirm: boolean,
+  now = Date.now(),
+) {
+  if (!(await isGroupAdmin(db, groupId, token, userId))) {
+    throw new GameError("נדרש החשבון שפתח את הקבוצה, או קישור הניהול.");
+  }
+  const group = await mustGroup(db, groupId);
+  if (betsLocked(group.electionStart, group.deadline, now)) {
+    throw new GameError("אחרי הנעילה אי אפשר לשנות את כלל החשיפה.");
+  }
+  if (next.visibility !== "anonymous" && next.visibility !== "open") {
+    throw new GameError("בחרו אנונימית או פתוחה.");
+  }
+  const revealBeforeLock = next.visibility === "open" && next.revealBeforeLock;
+  const same = group.visibility === next.visibility && group.revealBeforeLock === revealBeforeLock;
+  if (same) return;
+  const opening = exposureLevel(next.visibility, revealBeforeLock) > exposureLevel(group.visibility, group.revealBeforeLock);
+  if (opening && !confirm) {
+    throw new GameError("פתיחת הניחושים דורשת אישור. חברי הקבוצה יראו את חלוקת המושבים.");
+  }
+  const owner = await db.get<{ owner_user_id: string | null }>(`SELECT owner_user_id FROM groups WHERE id = ?`, [groupId]);
+  const via = userId && owner?.owner_user_id === userId ? "account" : "backup";
+  await db.transaction(async (tx) => {
+    await tx.run(`UPDATE groups SET bet_visibility = ?, reveal_before_lock = ? WHERE id = ?`, [
+      next.visibility,
+      revealBeforeLock ? 1 : 0,
+      groupId,
+    ]);
+    await tx.run(
+      `INSERT INTO visibility_log (id, group_id, changed_at, from_visibility, to_visibility, from_reveal, to_reveal, via)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        newId(),
+        groupId,
+        new Date(now).toISOString(),
+        group.visibility,
+        next.visibility,
+        group.revealBeforeLock ? 1 : 0,
+        revealBeforeLock ? 1 : 0,
+        via,
+      ],
+    );
+  });
+}
+
+export async function listVisibilityLog(db: Db, groupId: string): Promise<VisibilityChange[]> {
+  const rows = await db.all<{
+    changed_at: string;
+    from_visibility: string;
+    to_visibility: string;
+    from_reveal: number;
+    to_reveal: number;
+    via: string;
+  }>(
+    `SELECT changed_at, from_visibility, to_visibility, from_reveal, to_reveal, via
+     FROM visibility_log WHERE group_id = ? ORDER BY changed_at DESC`,
+    [groupId],
+  );
+  return rows.map((row) => ({
+    changedAt: row.changed_at,
+    fromVisibility: row.from_visibility === "open" ? "open" : "anonymous",
+    toVisibility: row.to_visibility === "open" ? "open" : "anonymous",
+    fromRevealBeforeLock: Number(row.from_reveal) === 1,
+    toRevealBeforeLock: Number(row.to_reveal) === 1,
+    via: row.via === "backup" ? "backup" : "account",
+  }));
+}
+
+export async function getSite(db: Db): Promise<SiteSettings> {
+  const row = await db.get<{
+    knesset_number: number;
+    prefer_computed_seats: number;
+    results_override: number;
+    last_fetch_attempt_at: string | null;
+    last_fetch_error: string | null;
+    threshold_bonus: number | null;
+    crowd_min_bets: number | null;
+    crowd_before_lock: number | null;
+  }>(`SELECT * FROM site WHERE id = 'site'`);
+  if (!row) throw new GameError("הגדרות האתר לא נמצאו.");
+  return {
+    knessetNumber: Number(row.knesset_number) || 26,
+    preferComputed: Number(row.prefer_computed_seats) === 1,
+    resultsOverride: Number(row.results_override) === 1,
+    lastFetchAttemptAt: row.last_fetch_attempt_at,
+    fetchError: row.last_fetch_error,
+    thresholdBonus: row.threshold_bonus == null ? DEFAULT_THRESHOLD_BONUS : Number(row.threshold_bonus),
+    crowdMinBets: row.crowd_min_bets == null ? DEFAULT_CROWD_MIN : Number(row.crowd_min_bets),
+    crowdBeforeLock: row.crowd_before_lock == null ? true : Number(row.crowd_before_lock) === 1,
+  };
+}
+
+export async function updateSite(
+  db: Db,
+  patch: {
+    knessetNumber?: number;
+    preferComputed?: boolean;
+    thresholdBonus?: number;
+    crowdMinBets?: number;
+    crowdBeforeLock?: boolean;
+  },
+) {
+  const site = await getSite(db);
+  const knesset = patch.knessetNumber ?? site.knessetNumber;
+  if (!Number.isInteger(knesset) || knesset < 20 || knesset > 40) {
+    throw new GameError("מספר הכנסת לא נראה נכון.");
+  }
+  let bonus = site.thresholdBonus;
+  if (patch.thresholdBonus != null) {
+    try {
+      bonus = cleanThresholdBonus(patch.thresholdBonus);
+    } catch (error) {
+      throw new GameError(error instanceof Error ? error.message : "משקל הבונוס לא תקין.");
+    }
+  }
+  let crowdMin = site.crowdMinBets;
+  if (patch.crowdMinBets != null) {
+    try {
+      crowdMin = cleanCrowdMin(patch.crowdMinBets);
+    } catch (error) {
+      throw new GameError(error instanceof Error ? error.message : "סף הניחושים לא תקין.");
+    }
+  }
+  const crowdBeforeLock = patch.crowdBeforeLock == null ? site.crowdBeforeLock : patch.crowdBeforeLock;
+  await db.run(
+    `UPDATE site SET knesset_number = ?, prefer_computed_seats = ?, threshold_bonus = ?, crowd_min_bets = ?, crowd_before_lock = ? WHERE id = 'site'`,
+    [
+      knesset,
+      patch.preferComputed == null ? (site.preferComputed ? 1 : 0) : patch.preferComputed ? 1 : 0,
+      bonus,
+      crowdMin,
+      crowdBeforeLock ? 1 : 0,
+    ],
+  );
+  if (patch.preferComputed != null) await recomputeCurrent(db);
+  await touchBoard(db);
+}
+
+export async function isGroupAdmin(
+  db: Db,
+  groupId: string,
+  token: string | null,
+  userId: string | null = null,
+): Promise<boolean> {
+  const row = await db.get<{ admin_token_hash: string | null; owner_user_id: string | null }>(
+    `SELECT admin_token_hash, owner_user_id FROM groups WHERE id = ?`,
+    [groupId],
+  );
+  if (!row) return false;
+  if (userId && row.owner_user_id === userId) return true;
+  if (!token || !row.admin_token_hash) return false;
+  return safeEqual(row.admin_token_hash, hashToken(token));
+}
+
+export async function rotateGroupAdmin(db: Db, groupId: string) {
+  const group = await mustGroup(db, groupId);
+  const adminToken = newToken();
+  await db.run(`UPDATE groups SET admin_token_hash = ? WHERE id = ?`, [hashToken(adminToken), groupId]);
+  return { code: group.code, adminToken };
+}
+
+export type Bloc = { id: string; name: string; sortOrder: number; partyIds: string[] };
+
+function cleanBlocName(name: string): string {
+  const clean = name.normalize("NFKC").replace(/\s+/g, " ").trim();
+  if (/[\u0000-\u001f]/.test(name) || clean.length < 2 || clean.length > 40) {
+    throw new GameError("שם הגוש צריך להיות בין 2 ל-40 תווים.");
+  }
+  return clean;
+}
+
+export async function listBlocs(db: Db): Promise<Bloc[]> {
+  const blocs = await db.all<{ id: string; name: string; sort_order: number }>(
+    `SELECT id, name, sort_order FROM blocs ORDER BY sort_order, name`,
+  );
+  const links = await db.all<{ bloc_id: string; party_id: string }>(`SELECT bloc_id, party_id FROM bloc_parties`);
+  const byBloc = new Map<string, string[]>();
+  for (const link of links) {
+    const list = byBloc.get(link.bloc_id) ?? [];
+    list.push(link.party_id);
+    byBloc.set(link.bloc_id, list);
+  }
+  return blocs.map((bloc) => ({
+    id: bloc.id,
+    name: bloc.name,
+    sortOrder: Number(bloc.sort_order),
+    partyIds: byBloc.get(bloc.id) ?? [],
+  }));
+}
+
+export async function createBloc(db: Db, name: string): Promise<Bloc> {
+  const clean = cleanBlocName(name);
+  const existing = await listBlocs(db);
+  const sort = existing.reduce((max, bloc) => Math.max(max, bloc.sortOrder), -1) + 1;
+  const id = newId();
+  await db.run(`INSERT INTO blocs (id, name, sort_order, created_at) VALUES (?, ?, ?, ?)`, [
+    id,
+    clean,
+    sort,
+    new Date().toISOString(),
+  ]);
+  await touchBoard(db);
+  return { id, name: clean, sortOrder: sort, partyIds: [] };
+}
+
+export async function updateBloc(db: Db, blocId: string, input: { name: string; partyIds: string[] }) {
+  const clean = cleanBlocName(input.name);
+  const parties = await listParties(db);
+  const known = new Set(parties.map((party) => party.id));
+  const partyIds = [...new Set(input.partyIds)];
+  if (partyIds.some((partyId) => !known.has(partyId))) throw new GameError("אחת הרשימות בגוש לא קיימת.");
+  const current = await db.get<{ id: string }>(`SELECT id FROM blocs WHERE id = ?`, [blocId]);
+  if (!current) throw new GameError("הגוש לא נמצא.");
+  await db.transaction(async (tx) => {
+    await tx.run(`UPDATE blocs SET name = ? WHERE id = ?`, [clean, blocId]);
+    await tx.run(`DELETE FROM bloc_parties WHERE bloc_id = ?`, [blocId]);
+    for (const partyId of partyIds) {
+      await tx.run(`INSERT INTO bloc_parties (bloc_id, party_id) VALUES (?, ?)`, [blocId, partyId]);
+    }
+  });
+  await touchBoard(db);
+}
+
+export async function deleteBloc(db: Db, blocId: string) {
+  await db.transaction(async (tx) => {
+    await tx.run(`DELETE FROM bloc_parties WHERE bloc_id = ?`, [blocId]);
+    await tx.run(`DELETE FROM blocs WHERE id = ?`, [blocId]);
+  });
+  await touchBoard(db);
+}
+
+export async function listParties(db: Db): Promise<Party[]> {
+  return (await listCatalog(db)).filter((party) => party.bettable);
+}
+
+export async function listCatalog(db: Db): Promise<Party[]> {
+  const rows = await db.all<{
+    id: string;
+    name: string;
+    ballot: string;
+    color: string;
+    sort_order: number;
+    match_keys: string;
+    bettable: number | null;
+  }>(`SELECT * FROM parties ORDER BY bettable DESC, sort_order, name`);
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    ballot: row.ballot,
+    color: row.color,
+    sortOrder: row.sort_order,
+    matchKeys: parseKeys(row.match_keys),
+    bettable: Number(row.bettable) !== 0,
+  }));
+}
+
+export async function addParty(db: Db, input: { name: string; ballot: string; color: string; matchKeys: string[] }) {
+  const name = input.name.normalize("NFKC").replace(/\s+/g, " ").trim();
+  if (name.length < 1 || name.length > 80) throw new GameError("שם הרשימה צריך להיות בין 1 ל-80 תווים.");
+  const parties = await listCatalog(db);
+  const sort = parties.reduce((max, party) => Math.max(max, party.sortOrder), -1) + 1;
+  await db.run(
+    `INSERT INTO parties (id, name, ballot, color, sort_order, match_keys, bettable, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
+    [newId(), name, input.ballot.trim(), cleanColor(input.color), sort, JSON.stringify(input.matchKeys), new Date().toISOString()],
+  );
+  await recomputeCurrent(db);
+}
+
+export async function updateParty(
+  db: Db,
+  partyId: string,
+  input: { name: string; ballot: string; color: string; matchKeys: string[] },
+) {
+  const name = input.name.normalize("NFKC").replace(/\s+/g, " ").trim();
+  if (name.length < 1 || name.length > 80) throw new GameError("שם הרשימה צריך להיות בין 1 ל-80 תווים.");
+  const result = await db.run(
+    `UPDATE parties SET name = ?, ballot = ?, color = ?, match_keys = ? WHERE id = ?`,
+    [name, input.ballot.trim(), cleanColor(input.color), JSON.stringify(input.matchKeys), partyId],
+  );
+  if (result.changes === 0) throw new GameError("הרשימה לא נמצאה.");
+  await recomputeCurrent(db);
+}
+
+export async function deleteParty(db: Db, partyId: string) {
+  const used = await db.get<{ c: number }>(`SELECT COUNT(*) AS c FROM predictions WHERE party_id = ?`, [partyId]);
+  if (Number(used?.c ?? 0) > 0) {
+    throw new GameError("אי אפשר למחוק רשימה שכבר ניחשו עליה. אפשר לשנות שם או אותיות.");
+  }
+  await db.transaction(async (tx) => {
+    await tx.run(`DELETE FROM surplus_agreements WHERE party_a_id = ? OR party_b_id = ?`, [partyId, partyId]);
+    await tx.run(`DELETE FROM bloc_parties WHERE party_id = ?`, [partyId]);
+    await tx.run(`DELETE FROM parties WHERE id = ?`, [partyId]);
+  });
+  await recomputeCurrent(db);
+}
+
+export async function moveParty(db: Db, partyId: string, direction: -1 | 1) {
+  const parties = await listParties(db);
+  const index = parties.findIndex((party) => party.id === partyId);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= parties.length) return;
+  await db.transaction(async (tx) => {
+    await tx.run(`UPDATE parties SET sort_order = ? WHERE id = ?`, [parties[target].sortOrder, parties[index].id]);
+    await tx.run(`UPDATE parties SET sort_order = ? WHERE id = ?`, [parties[index].sortOrder, parties[target].id]);
+  });
+}
+
+export async function listAgreements(db: Db): Promise<Agreement[]> {
+  const rows = await db.all<{
+    id: string;
+    party_a_id: string;
+    party_b_id: string;
+    party_a_name: string;
+    party_b_name: string;
+  }>(
+    `SELECT a.id AS id, a.party_a_id AS party_a_id, a.party_b_id AS party_b_id,
+            pa.name AS party_a_name, pb.name AS party_b_name
+     FROM surplus_agreements a
+     JOIN parties pa ON pa.id = a.party_a_id
+     JOIN parties pb ON pb.id = a.party_b_id
+     ORDER BY pa.sort_order`,
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    partyAId: row.party_a_id,
+    partyBId: row.party_b_id,
+    partyAName: row.party_a_name,
+    partyBName: row.party_b_name,
+  }));
+}
+
+export async function addAgreement(db: Db, partyAId: string, partyBId: string) {
+  if (partyAId === partyBId) throw new GameError("הסכם עודפים נחתם בין שתי רשימות שונות.");
+  const parties = await listParties(db);
+  if (!parties.some((party) => party.id === partyAId) || !parties.some((party) => party.id === partyBId)) {
+    throw new GameError("אחת הרשימות לא נמצאה.");
+  }
+  const existing = await listAgreements(db);
+  const busy = new Set(existing.flatMap((item) => [item.partyAId, item.partyBId]));
+  if (busy.has(partyAId) || busy.has(partyBId)) {
+    throw new GameError("רשימה יכולה להיות רק בהסכם עודפים אחד.");
+  }
+  await db.run(
+    `INSERT INTO surplus_agreements (id, party_a_id, party_b_id, created_at) VALUES (?, ?, ?, ?)`,
+    [newId(), partyAId, partyBId, new Date().toISOString()],
+  );
+  await recomputeCurrent(db);
+}
+
+export async function removeAgreement(db: Db, agreementId: string) {
+  await db.run(`DELETE FROM surplus_agreements WHERE id = ?`, [agreementId]);
+  await recomputeCurrent(db);
+}
+
+const LOCKED_MESSAGE = "הניחושים נעולים. אי אפשר להצטרף או לשנות אחרי הנעילה.";
+
+/** A blank cell is zero. Anything else must be a plain integer, not hex, scientific, or a boolean. */
+function readSeat(value: unknown): number {
+  if (value == null || value === "") return 0;
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) throw new GameError("מנדטים חייבים להיות מספרים שלמים.");
+    return value;
+  }
+  if (typeof value === "string" && /^-?(0|[1-9]\d*)$/.test(value)) {
+    const number = Number(value);
+    if (!Number.isSafeInteger(number)) throw new GameError("מנדטים חייבים להיות מספרים שלמים.");
+    return number;
+  }
+  throw new GameError("מנדטים חייבים להיות מספרים שלמים.");
+}
+
+function assertBetsOpen(group: { electionStart: string; deadline: string | null }, now: number) {
+  if (betsLocked(group.electionStart, group.deadline, now)) throw new GameError(LOCKED_MESSAGE);
+}
+
+export async function joinGroup(
+  db: Db,
+  groupId: string,
+  displayName: string,
+  now = Date.now(),
+  userId: string | null = null,
+) {
+  const alias = cleanDisplayName(displayName);
+  if (!alias) throw new GameError("בחרו כינוי באורך 1 עד 24 תווים.");
+  const group = await mustGroup(db, groupId);
+  assertBetsOpen(group, now);
+  if (userId) {
+    const already = await participantFromUser(db, groupId, userId);
+    if (already) throw new GameError("כבר יש לכם ניחוש בקבוצה הזו.");
+  }
+  const token = newToken();
+  const id = newId();
+  try {
+    await db.run(
+      `INSERT INTO participants (id, group_id, display_name, name_key, token_hash, user_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, groupId, alias, nameKey(alias), hashToken(token), userId, new Date().toISOString()],
+    );
+  } catch (error) {
+    if (isUnique(error)) {
+      if (userId && (await participantFromUser(db, groupId, userId))) {
+        throw new GameError("כבר יש לכם ניחוש בקבוצה הזו.");
+      }
+      throw new GameError("הכינוי תפוס בקבוצה הזו. בחרו אחר.");
+    }
+    throw error;
+  }
+  return { token, participantId: id, alias };
+}
+
+type ParticipantRow = { id: string; display_name: string; created_at: string };
+
+export async function participantFromUser(db: Db, groupId: string, userId: string | null) {
+  if (!userId) return null;
+  return (
+    (await db.get<ParticipantRow>(
+      `SELECT id, display_name, created_at FROM participants WHERE group_id = ? AND user_id = ?`,
+      [groupId, userId],
+    )) ?? null
+  );
+}
+
+/** A device token only opens a bet that has not been claimed by an account. */
+export async function participantFromToken(db: Db, groupId: string, token: string | null) {
+  if (!token) return null;
+  return (
+    (await db.get<ParticipantRow>(
+      `SELECT id, display_name, created_at FROM participants WHERE group_id = ? AND token_hash = ? AND user_id IS NULL`,
+      [groupId, hashToken(token)],
+    )) ?? null
+  );
+}
+
+export async function savePrediction(
+  db: Db,
+  groupId: string,
+  token: string,
+  rawSeats: Record<string, unknown>,
+  now = Date.now(),
+) {
+  const participant = await participantFromToken(db, groupId, token);
+  if (!participant) throw new GameError("לא מצאנו ניחוש שמור בדפדפן הזה. הצטרפו עם כינוי.");
+  return writePrediction(db, groupId, participant.id, rawSeats, now);
+}
+
+/** Writes the signed-in account's bet in this group, and never another person's row. */
+export async function savePredictionForUser(
+  db: Db,
+  groupId: string,
+  userId: string,
+  rawSeats: Record<string, unknown>,
+  now = Date.now(),
+) {
+  const participant = await participantFromUser(db, groupId, userId);
+  if (!participant) throw new GameError("אין לכם ניחוש בקבוצה הזו.");
+  return writePrediction(db, groupId, participant.id, rawSeats, now);
+}
+
+async function writePrediction(
+  db: Db,
+  groupId: string,
+  participantId: string,
+  rawSeats: Record<string, unknown>,
+  now: number,
+) {
+  const group = await mustGroup(db, groupId);
+  assertBetsOpen(group, now);
+  const parties = await listParties(db);
+  const known = new Set(parties.map((party) => party.id));
+  for (const key of Object.keys(rawSeats)) {
+    if (!known.has(key)) throw new GameError("הטופס כולל רשימה שלא קיימת.");
+  }
+  const seats: Record<string, number> = {};
+  for (const party of parties) {
+    seats[party.id] = readSeat(rawSeats[party.id]);
+  }
+  const check = checkSeatVector(parties.map((party) => seats[party.id]));
+  if (!check.ok) throw new GameError(check.error);
+  const savedAt = new Date(now).toISOString();
+  await db.transaction(async (tx) => {
+    await tx.run(`DELETE FROM predictions WHERE participant_id = ?`, [participantId]);
+    for (const party of parties) {
+      await tx.run(
+        `INSERT INTO predictions (participant_id, party_id, seats, updated_at) VALUES (?, ?, ?, ?)`,
+        [participantId, party.id, seats[party.id], savedAt],
+      );
+    }
+    await tx.run(`INSERT INTO bet_versions (id, participant_id, group_id, saved_at, seats) VALUES (?, ?, ?, ?, ?)`, [
+      newId(),
+      participantId,
+      groupId,
+      savedAt,
+      JSON.stringify(seats),
+    ]);
+  });
+  await touchBoard(db);
+  return { warnings: check.warnings };
+}
+
+export async function deleteParticipation(db: Db, groupId: string, token: string, now = Date.now()) {
+  const participant = await participantFromToken(db, groupId, token);
+  if (!participant) throw new GameError("לא מצאנו משתתף בדפדפן הזה.");
+  await removeParticipant(db, groupId, participant.id, now);
+}
+
+export async function deleteParticipationForUser(db: Db, groupId: string, userId: string, now = Date.now()) {
+  const participant = await participantFromUser(db, groupId, userId);
+  if (!participant) throw new GameError("אין לכם ניחוש בקבוצה הזו.");
+  await removeParticipant(db, groupId, participant.id, now);
+}
+
+async function removeParticipant(db: Db, groupId: string, participantId: string, now: number) {
+  const group = await mustGroup(db, groupId);
+  assertBetsOpen(group, now);
+  await db.transaction(async (tx) => {
+    await tx.run(`DELETE FROM bet_versions WHERE participant_id = ?`, [participantId]);
+    await tx.run(`DELETE FROM predictions WHERE participant_id = ?`, [participantId]);
+    await tx.run(`DELETE FROM participants WHERE id = ?`, [participantId]);
+  });
+  await touchBoard(db);
+}
+
+export async function listParticipantsAdmin(db: Db, groupId: string): Promise<AdminParticipant[]> {
+  const rows = await db.all<{ display_name: string; created_at: string; seat_sum: number | string; paid: number | null }>(
+    `SELECT p.display_name, p.created_at, p.paid,
+            COALESCE((SELECT SUM(pr.seats) FROM predictions pr WHERE pr.participant_id = p.id), 0) AS seat_sum
+     FROM participants p
+     WHERE p.group_id = ?
+     ORDER BY p.created_at`,
+    [groupId],
+  );
+  return rows.map((row) => ({
+    alias: row.display_name,
+    joinedAt: row.created_at,
+    complete: Number(row.seat_sum) === KNESSET_SEATS,
+    paid: Number(row.paid) === 1,
+  }));
+}
+
+/** Group admin only. The mark is never part of a public board. */
+export async function setPaidAliases(
+  db: Db,
+  groupId: string,
+  token: string | null,
+  aliases: string[],
+  userId: string | null = null,
+) {
+  if (!(await isGroupAdmin(db, groupId, token, userId))) {
+    throw new GameError("נדרש החשבון שפתח את הקבוצה, או קישור הניהול.");
+  }
+  const people = await db.all<{ display_name: string }>(
+    `SELECT display_name FROM participants WHERE group_id = ?`,
+    [groupId],
+  );
+  const known = new Set(people.map((person) => person.display_name));
+  const wanted = [...new Set(aliases.map((alias) => alias.trim()).filter(Boolean))];
+  for (const alias of wanted) {
+    if (!known.has(alias)) throw new GameError("אין משתתף כזה בקבוצה.");
+  }
+  await db.transaction(async (tx) => {
+    await tx.run(`UPDATE participants SET paid = 0 WHERE group_id = ?`, [groupId]);
+    for (const alias of wanted) {
+      await tx.run(`UPDATE participants SET paid = 1 WHERE group_id = ? AND display_name = ?`, [groupId, alias]);
+    }
+  });
+}
+
+export async function applyParsedResults(
+  db: Db,
+  parsed: ParsedResults,
+  meta: {
+    source: "official" | "upload" | "manual";
+    sourceUrl?: string | null;
+    fetchedAt?: string;
+    preferComputed?: boolean;
+  },
+) {
+  const site = await getSite(db);
+  const parties = await listCatalog(db);
+  const agreements = await listAgreements(db);
+  const decision = decideSeats({
+    parsed,
+    parties: parties.map(toRef),
+    agreements: agreements.map((item) => ({ a: item.partyAId, b: item.partyBId })),
+    preferComputed: meta.preferComputed ?? site.preferComputed,
+  });
+  await replaceSnapshot(db, {
+    fetchedAt: meta.fetchedAt ?? new Date().toISOString(),
+    status: parsed.status,
+    source: meta.source,
+    seatMethod: decision.method,
+    sourceUrl: meta.sourceUrl ?? null,
+    countedPercent: parsed.countedPercent,
+    turnoutPercent: parsed.turnoutPercent,
+    eligibleVoters: parsed.eligibleVoters,
+    ballotsCast: parsed.ballotsCast,
+    validVotes: parsed.validVotes,
+    invalidVotes: parsed.invalidVotes,
+    scoreable: decision.scoreable,
+    note: resultNote(parsed, decision.warnings),
+    rows: decision.rows,
+  });
+  return decision;
+}
+
+function resultNote(parsed: ParsedResults, warnings: string[]): string | null {
+  const parts = [...warnings];
+  if (parsed.status !== "final" && parsed.countedPercent == null && parsed.ballotsCast != null) {
+    const ballots = formatNumber(parsed.ballotsCast);
+    const eligible = parsed.eligibleVoters != null ? formatNumber(parsed.eligibleVoters) : null;
+    parts.unshift(
+      eligible
+        ? `נקלטו ${ballots} קולות מתוך ${eligible} בעלי זכות בחירה. הדף לא מפרסם אחוז ספירה.`
+        : `נקלטו ${ballots} קולות. הדף לא מפרסם אחוז ספירה.`,
+    );
+  }
+  return parts.length ? parts.join("\n") : null;
+}
+
+export async function saveManualResults(
+  db: Db,
+  input: {
+    seatsByPartyId: Record<string, number>;
+    votesByPartyId: Record<string, number | null>;
+    computeFromVotes: boolean;
+    status: "provisional" | "final";
+    countedPercent: number | null;
+    turnoutPercent: number | null;
+  },
+) {
+  const parties = await listParties(db);
+  if (input.computeFromVotes) {
+    for (const party of parties) {
+      const votes = input.votesByPartyId[party.id];
+      if (votes == null || !Number.isInteger(votes) || votes < 0) {
+        throw new GameError(`חסרות קולות תקינים עבור ${party.name}.`);
+      }
+    }
+    const lists: ParsedList[] = parties.map((party) => ({
+      name: party.name,
+      ballot: party.ballot,
+      votes: input.votesByPartyId[party.id],
+      officialSeats: null,
+      votePercent: null,
+    }));
+    const validVotes = lists.reduce((sum, list) => sum + (list.votes ?? 0), 0);
+    await applyParsedResults(
+      db,
+      {
+        status: input.status,
+        countedPercent: input.countedPercent,
+        turnoutPercent: input.turnoutPercent,
+        eligibleVoters: null,
+        ballotsCast: null,
+        validVotes,
+        invalidVotes: null,
+        lists,
+        format: "manual-votes",
+      },
+      { source: "manual", preferComputed: true },
+    );
+  } else {
+    const seats = parties.map((party) => input.seatsByPartyId[party.id] ?? 0);
+    const check = checkSeatVector(seats);
+    if (!check.ok) throw new GameError(check.error);
+    for (const party of parties) {
+      const votes = input.votesByPartyId[party.id];
+      if (votes != null && (!Number.isInteger(votes) || votes < 0)) {
+        throw new GameError(`קולות לא תקינים עבור ${party.name}.`);
+      }
+    }
+    await replaceSnapshot(db, {
+      fetchedAt: new Date().toISOString(),
+      status: input.status,
+      source: "manual",
+      seatMethod: "manual",
+      sourceUrl: null,
+      countedPercent: input.countedPercent,
+      turnoutPercent: input.turnoutPercent,
+      eligibleVoters: null,
+      ballotsCast: null,
+      validVotes: null,
+      invalidVotes: null,
+      scoreable: true,
+      note: "הזנה ידנית של מנדטים.",
+      rows: parties.map((party) => ({
+        partyId: party.id,
+        sourceName: party.name,
+        sourceBallot: party.ballot,
+        votes: input.votesByPartyId[party.id],
+        officialSeats: input.seatsByPartyId[party.id] ?? 0,
+        seats: input.seatsByPartyId[party.id] ?? 0,
+        passedThreshold: (input.seatsByPartyId[party.id] ?? 0) > 0,
+        mapped: true,
+      })),
+    });
+  }
+  await db.run(`UPDATE site SET results_override = 1, last_fetch_error = NULL WHERE id = 'site'`);
+}
+
+export async function markUploaded(db: Db) {
+  await db.run(`UPDATE site SET results_override = 1, last_fetch_error = NULL WHERE id = 'site'`);
+}
+
+export async function clearOverride(db: Db) {
+  await db.run(`UPDATE site SET results_override = 0 WHERE id = 'site'`);
+}
+
+export async function recomputeCurrent(db: Db) {
+  const snapshot = await currentSnapshot(db);
+  if (!snapshot || snapshot.seat_method === "manual") return;
+  const stored = await snapshotRows(db, snapshot.id);
+  const parsed: ParsedResults = {
+    status: snapshot.status,
+    countedPercent: numberOrNull(snapshot.counted_percent),
+    turnoutPercent: numberOrNull(snapshot.turnout_percent),
+    eligibleVoters: numberOrNull(snapshot.eligible_voters),
+    ballotsCast: numberOrNull(snapshot.ballots_cast),
+    validVotes: numberOrNull(snapshot.valid_votes),
+    invalidVotes: numberOrNull(snapshot.invalid_votes),
+    lists: stored.map((row) => ({
+      name: row.source_name,
+      ballot: row.source_ballot,
+      votes: numberOrNull(row.votes),
+      officialSeats: numberOrNull(row.official_seats),
+      votePercent: null,
+    })),
+    format: "recompute",
+  };
+  await applyParsedResults(db, parsed, {
+    source: snapshot.source,
+    sourceUrl: snapshot.source_url,
+    fetchedAt: snapshot.fetched_at,
+  });
+}
+
+export type ScoreContext = {
+  site: SiteSettings;
+  /** Lists on the bet slip. */
+  parties: Party[];
+  /** Bet slip, plus a minor list that actually won seats. A guess of that list is 0. */
+  scoreParties: Party[];
+  actual: Record<string, number>;
+  results: PublicResults | null;
+  scoreable: boolean;
+};
+
+export async function loadScoreContext(db: Db): Promise<ScoreContext> {
+  const site = await getSite(db);
+  const catalog = await listCatalog(db);
+  const parties = catalog.filter((party) => party.bettable);
+  const snapshot = await currentSnapshot(db);
+  const resultRows = snapshot ? await snapshotRows(db, snapshot.id) : [];
+  const actual: Record<string, number> = {};
+  for (const party of catalog) actual[party.id] = 0;
+  for (const row of resultRows) {
+    if (row.party_id) actual[row.party_id] = (actual[row.party_id] ?? 0) + Number(row.seats);
+  }
+  const scoreParties = catalog.filter((party) => party.bettable || (actual[party.id] ?? 0) > 0);
+  const scoreable = Boolean(snapshot && Number(snapshot.scoreable) === 1);
+  const results: PublicResults | null = snapshot
+    ? {
+        status: snapshot.status,
+        source: snapshot.source,
+        seatMethod: snapshot.seat_method,
+        countedPercent: numberOrNull(snapshot.counted_percent),
+        turnoutPercent: numberOrNull(snapshot.turnout_percent),
+        fetchedAt: snapshot.fetched_at,
+        scoreable,
+        note: snapshot.note,
+        parties: scoreParties.map((party) => {
+          const row = resultRows.find((item) => item.party_id === party.id);
+          return {
+            name: party.name,
+            ballot: party.ballot,
+            color: party.color,
+            seats: actual[party.id] ?? 0,
+            votes: row ? numberOrNull(row.votes) : null,
+            passed: row ? Number(row.passed_threshold) === 1 : false,
+          };
+        }),
+        unmapped: resultRows
+          .filter((row) => !row.party_id || Number(row.mapped) === 0)
+          .map((row) => ({
+            name: row.source_name,
+            ballot: row.source_ballot,
+            seats: Number(row.seats),
+            votes: numberOrNull(row.votes),
+          })),
+      }
+    : null;
+  return { site, parties, scoreParties, actual, results, scoreable };
+}
+
+export async function getPublicState(
+  db: Db,
+  groupId: string,
+  token: string | null,
+  userId: string | null = null,
+  viewerIsAdmin = false,
+): Promise<PublicGroupState> {
+  const group = await mustGroup(db, groupId);
+  const { readGroupBoard } = await import("./board-cache");
+  const board = await readGroupBoard(db, groupId);
+  const schedule = lockSchedule(group.electionStart, group.deadline);
+  const locked = isLocked(schedule.lockAt);
+  const you = userId
+    ? await participantFromUser(db, groupId, userId)
+    : await participantFromToken(db, groupId, token);
+  let own: OwnView | null = null;
+  if (you) {
+    const predictionRows = await db.all<{ party_id: string; seats: number }>(
+      `SELECT party_id, seats FROM predictions WHERE participant_id = ?`,
+      [you.id],
+    );
+    const predicted: Record<string, number> = {};
+    for (const row of predictionRows) predicted[row.party_id] = Number(row.seats);
+    const parties = board.parties;
+    const total = parties.reduce((sum, party) => sum + (predicted[party.id] ?? 0), 0);
+    const submitted = checkSeatVector(parties.map((party) => predicted[party.id] ?? 0)).ok;
+    const guess = scoreGuess(
+      parties.map((party) => party.id),
+      predicted,
+      board.actual,
+      board.thresholdBonus,
+    );
+    const mine = board.standings.find((row) => row.alias === you.display_name);
+    own = {
+      alias: you.display_name,
+      submitted,
+      locked,
+      total,
+      prediction: parties.map((party) => ({
+        partyId: party.id,
+        name: party.name,
+        ballot: party.ballot,
+        color: party.color,
+        seats: predicted[party.id] ?? 0,
+      })),
+      breakdown:
+        mine == null || !board.scoreable
+          ? null
+          : {
+              rank: mine.rank,
+              euclidean: roundScore(guess.euclidean),
+              absolute: guess.absolute,
+              misplaced: guess.misplaced,
+              score: roundScore(guess.score),
+              thresholdCorrect: guess.thresholdCorrect,
+              parties: guess.diffs.map((diff) => ({
+                partyId: diff.partyId,
+                name: parties.find((party) => party.id === diff.partyId)?.name ?? "",
+                color: parties.find((party) => party.id === diff.partyId)?.color ?? "#78716c",
+                predicted: diff.predicted,
+                actual: diff.actual,
+                diff: diff.diff,
+                passedCall: diff.passedCall,
+              })),
+            },
+      history: [],
+    };
+  }
+
+  const names = board.parties.map((party) => ({
+    id: party.id,
+    name: party.name,
+    ballot: party.ballot,
+    color: party.color,
+  }));
+  if (own && you) own.history = await revisionsForParticipant(db, you.id, names);
+  const revealed = membersCanSeeBets(group, locked) && (you != null || viewerIsAdmin)
+    ? await loadRevealedBets(db, groupId, names, you?.id ?? null)
+    : null;
+
+  return {
+    group: {
+      name: group.name,
+      code: group.code,
+      deadline: group.deadline,
+      electionStart: group.electionStart,
+      lockAt: schedule.lockAt,
+      lockReason: schedule.reason,
+      locked,
+      knessetNumber: board.knessetNumber,
+      visibility: group.visibility,
+      revealBeforeLock: group.revealBeforeLock,
+    },
+    participantCount: board.participantCount,
+    completeCount: board.completeCount,
+    aliases: board.aliases,
+    fetchProblem: board.fetchProblem,
+    results: board.results,
+    standings: board.standings.map((row) => ({ ...row, isYou: row.alias === you?.display_name })),
+    stake: board.stake,
+    own,
+    revealed,
+    thresholdBonus: board.thresholdBonus,
+    partyCount: board.partyCount,
+  };
+}
+
+async function replaceSnapshot(
+  db: Db,
+  snapshot: {
+    fetchedAt: string;
+    status: "provisional" | "final";
+    source: "official" | "upload" | "manual";
+    seatMethod: PublicResults["seatMethod"];
+    sourceUrl: string | null;
+    countedPercent: number | null;
+    turnoutPercent: number | null;
+    eligibleVoters: number | null;
+    ballotsCast: number | null;
+    validVotes: number | null;
+    invalidVotes: number | null;
+    scoreable: boolean;
+    note: string | null;
+    rows: {
+      partyId: string | null;
+      sourceName: string;
+      sourceBallot: string;
+      votes: number | null;
+      officialSeats: number | null;
+      seats: number;
+      passedThreshold: boolean;
+      mapped: boolean;
+    }[];
+  },
+) {
+  await db.transaction(async (tx) => {
+    await tx.run(`DELETE FROM result_rows`);
+    await tx.run(`DELETE FROM result_snapshots`);
+    const id = newId();
+    await tx.run(
+      `INSERT INTO result_snapshots (
+         id, fetched_at, status, source, seat_method, source_url,
+         counted_percent, turnout_percent, eligible_voters, ballots_cast, valid_votes, invalid_votes,
+         is_current, scoreable, note
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+      [
+        id,
+        snapshot.fetchedAt,
+        snapshot.status,
+        snapshot.source,
+        snapshot.seatMethod,
+        snapshot.sourceUrl,
+        snapshot.countedPercent,
+        snapshot.turnoutPercent,
+        snapshot.eligibleVoters,
+        snapshot.ballotsCast,
+        snapshot.validVotes,
+        snapshot.invalidVotes,
+        snapshot.scoreable ? 1 : 0,
+        snapshot.note,
+      ],
+    );
+    for (const row of snapshot.rows) {
+      await tx.run(
+        `INSERT INTO result_rows (
+           id, snapshot_id, party_id, source_name, source_ballot, votes, official_seats, seats, passed_threshold, mapped
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          newId(),
+          id,
+          row.partyId,
+          row.sourceName,
+          row.sourceBallot,
+          row.votes,
+          row.officialSeats,
+          row.seats,
+          row.passedThreshold ? 1 : 0,
+          row.mapped ? 1 : 0,
+        ],
+      );
+    }
+    await tx.run(`UPDATE site SET board_revision = board_revision + 1 WHERE id = 'site'`);
+  });
+}
+
+async function currentSnapshot(db: Db) {
+  return (
+    (await db.get<SnapshotRow>(`SELECT * FROM result_snapshots ORDER BY fetched_at DESC LIMIT 1`)) ?? null
+  );
+}
+
+async function snapshotRows(db: Db, snapshotId: string) {
+  return db.all<ResultRow>(`SELECT * FROM result_rows WHERE snapshot_id = ?`, [snapshotId]);
+}
+
+type NamedParty = { id: string; name: string; ballot: string; color: string };
+
+async function revisionsForParticipant(db: Db, participantId: string, parties: NamedParty[]): Promise<BetRevision[]> {
+  const rows = await db.all<{ saved_at: string; seats: string }>(
+    `SELECT saved_at, seats FROM bet_versions WHERE participant_id = ? ORDER BY saved_at, id`,
+    [participantId],
+  );
+  return revisionsFromVersions(
+    parties,
+    rows.map((row) => ({ savedAt: row.saved_at, seats: parseSeatJson(row.seats) })),
+  );
+}
+
+async function loadRevealedBets(
+  db: Db,
+  groupId: string,
+  parties: NamedParty[],
+  viewerParticipantId: string | null,
+): Promise<RevealedBet[]> {
+  const people = await db.all<{ id: string; display_name: string }>(
+    `SELECT id, display_name FROM participants WHERE group_id = ? ORDER BY created_at, display_name`,
+    [groupId],
+  );
+  const preds = await db.all<{ participant_id: string; party_id: string; seats: number }>(
+    `SELECT pr.participant_id, pr.party_id, pr.seats
+     FROM predictions pr
+     JOIN participants p ON p.id = pr.participant_id
+     WHERE p.group_id = ?`,
+    [groupId],
+  );
+  const versions = await db.all<{ participant_id: string; saved_at: string; seats: string }>(
+    `SELECT v.participant_id, v.saved_at, v.seats
+     FROM bet_versions v
+     JOIN participants p ON p.id = v.participant_id
+     WHERE v.group_id = ?
+     ORDER BY v.saved_at, v.id`,
+    [groupId],
+  );
+  const byPerson = new Map<string, Record<string, number>>();
+  for (const row of preds) {
+    const bag = byPerson.get(row.participant_id) ?? {};
+    bag[row.party_id] = Number(row.seats);
+    byPerson.set(row.participant_id, bag);
+  }
+  const historyByPerson = new Map<string, { savedAt: string; seats: Record<string, number> }[]>();
+  for (const row of versions) {
+    const list = historyByPerson.get(row.participant_id) ?? [];
+    list.push({ savedAt: row.saved_at, seats: parseSeatJson(row.seats) });
+    historyByPerson.set(row.participant_id, list);
+  }
+  return people.map((person) => {
+    const predicted = byPerson.get(person.id) ?? {};
+    const submitted = Object.keys(predicted).length > 0;
+    const prediction: OwnPrediction[] = submitted
+      ? parties.map((party) => ({
+          partyId: party.id,
+          name: party.name,
+          ballot: party.ballot,
+          color: party.color,
+          seats: predicted[party.id] ?? 0,
+        }))
+      : [];
+    return {
+      alias: person.display_name,
+      isYou: person.id === viewerParticipantId,
+      submitted,
+      prediction,
+      history: revisionsFromVersions(parties, historyByPerson.get(person.id) ?? []),
+    };
+  });
+}
+
+async function mustGroup(db: Db, groupId: string) {
+  const group = await getGroupById(db, groupId);
+  if (!group) throw new GameError("הקבוצה לא נמצאה.");
+  return group;
+}
+
+async function touchBoard(db: Db) {
+  await db.run(`UPDATE site SET board_revision = board_revision + 1 WHERE id = 'site'`);
+}
+
+export type Group = {
+  id: string;
+  name: string;
+  code: string;
+  deadline: string | null;
+  electionStart: string;
+  publicBoard: boolean;
+  stakeAgorot: number;
+  payoutSplit: number[];
+  visibility: BetVisibility;
+  revealBeforeLock: boolean;
+  createdAt: string;
+  hasAdminLink: boolean;
+  ownerUserId: string | null;
+};
+
+function presentGroup(row: GroupRow): Group {
+  return {
+    id: row.id,
+    name: row.name,
+    code: row.code,
+    deadline: row.deadline,
+    electionStart: row.election_start || pollsOpenIso(),
+    publicBoard: Number(row.public_board) === 1,
+    stakeAgorot: Number(row.stake_agorot) || 0,
+    payoutSplit: parseStoredSplit(row.payout_split),
+    visibility: row.bet_visibility === "open" ? "open" : "anonymous",
+    revealBeforeLock: Number(row.reveal_before_lock) === 1,
+    createdAt: row.created_at,
+    hasAdminLink: Boolean(row.admin_token_hash),
+    ownerUserId: row.owner_user_id ?? null,
+  };
+}
+
+function toRef(party: Party): PartyRef {
+  return { id: party.id, name: party.name, ballot: party.ballot, matchKeys: party.matchKeys };
+}
+
+function parseKeys(raw: string): string[] {
+  try {
+    const value = JSON.parse(raw) as unknown;
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function cleanColor(input: string): string {
+  return /^#[0-9a-fA-F]{6}$/.test(input.trim()) ? input.trim() : "#1d4e89";
+}
+
+function numberOrNull(value: unknown): number | null {
+  if (value == null) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function isUnique(error: unknown): boolean {
+  return error instanceof Error && /unique/i.test(error.message);
+}

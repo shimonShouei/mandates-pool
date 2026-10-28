@@ -1,0 +1,258 @@
+import Link from "next/link";
+import { lockNow, markPaidAction, updateGroupAction } from "@/app/actions";
+import { ActionForm } from "@/components/action-form";
+import { VisibilityForm } from "@/components/visibility-form";
+import { ClaimAdmin } from "@/components/claim-admin";
+import { CopyCode } from "@/components/copy-code";
+import { CopyLink } from "@/components/copy-link";
+import { Shell } from "@/components/shell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { currentUserId } from "@/auth";
+import { getDb } from "@/lib/db";
+import { formatWhen } from "@/lib/format";
+import { ruleLabel } from "@/lib/bet-history";
+import { getGroupByCode, isGroupAdmin, listParticipantsAdmin, listVisibilityLog } from "@/lib/game";
+import { readGroupAdminToken } from "@/lib/session";
+import { STAKE_NOTE } from "@/lib/payout";
+import { isLocked, isoToJerusalemLocal, lockSchedule } from "@/lib/time";
+
+export default async function ManageGroupPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ code: string }>;
+  searchParams: Promise<{ k?: string; welcome?: string }>;
+}) {
+  const { code } = await params;
+  const query = await searchParams;
+  const db = await getDb();
+  const group = await getGroupByCode(db, code);
+  if (!group) {
+    return (
+      <Shell>
+        <h1 className="mt-10 font-heading text-4xl">אין קבוצה כזאת</h1>
+        <Link href="/" className="mt-4 inline-block text-primary underline-offset-4 hover:underline">
+          חזרה
+        </Link>
+      </Shell>
+    );
+  }
+
+  if (query.k) {
+    return (
+      <Shell>
+        <h1 className="mt-8 font-heading text-4xl">ניהול {group.name}</h1>
+        <ClaimAdmin code={group.code} token={query.k} />
+      </Shell>
+    );
+  }
+
+  const userId = await currentUserId();
+  const token = await readGroupAdminToken(group.id);
+  const allowed = await isGroupAdmin(db, group.id, token, userId);
+  if (!allowed) {
+    return (
+      <Shell>
+        <h1 className="mt-8 font-heading text-4xl">ניהול {group.name}</h1>
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+          הדף נפתח לחשבון שפתח את הקבוצה, או עם קישור הניהול הפרטי. אם הקישור אבד, מנהל האתר יכול להנפיק אחד חדש.
+        </p>
+        <Link href={`/g/${group.code}`} className="mt-4 inline-block text-primary underline-offset-4 hover:underline">
+          לדף הקבוצה
+        </Link>
+      </Shell>
+    );
+  }
+
+  const people = await listParticipantsAdmin(db, group.id);
+  const visibilityLog = await listVisibilityLog(db, group.id);
+  const schedule = lockSchedule(group.electionStart, group.deadline);
+  const locked = isLocked(schedule.lockAt);
+  const splitText = group.payoutSplit.join("/");
+  const splitPreset = splitText === "100" || splitText === "60/30/10" ? splitText : "custom";
+  const stakeValue = group.stakeAgorot % 100 === 0 ? String(group.stakeAgorot / 100) : (group.stakeAgorot / 100).toFixed(2);
+
+  return (
+    <Shell>
+      <p className="mt-4 text-sm">
+        <Link href={`/g/${group.code}`} className="text-primary underline-offset-4 hover:underline">
+          דף הקבוצה
+        </Link>
+        <span className="text-muted-foreground"> · </span>
+        <Link href="/board" className="text-primary underline-offset-4 hover:underline">
+          הדירוג הארצי
+        </Link>
+      </p>
+      <h1 className="mt-2 font-heading text-5xl">ניהול {group.name}</h1>
+      {query.welcome ? (
+        <p className="mt-3 rounded-xl bg-card px-4 py-3 text-sm ring-1 ring-foreground/10">
+          הקבוצה נפתחה על החשבון הזה. שמרו את קישור הגיבוי. הוא נשאר בתוקף גם בלי החשבון, ומנהל האתר יכול להנפיק חדש.
+        </p>
+      ) : null}
+
+      <div className="mt-4 space-y-2">
+        <CopyCode code={group.code} />
+        {token ? (
+          <CopyLink
+            label="קישור ניהול לגיבוי"
+            display={`/g/${group.code}/manage?k=••••`}
+            path={`/g/${group.code}/manage?k=${token}`}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            החשבון הזה מנהל את הקבוצה. קישור הגיבוי הוצג פעם אחת, בדפדפן שבו הקבוצה נוצרה.
+          </p>
+        )}
+      </div>
+
+      <section className="mt-6 space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+        <h2 className="font-heading text-2xl">חשיפת הניחושים</h2>
+        <p className="text-sm">{ruleLabel(group.visibility, group.revealBeforeLock)}</p>
+        <p className="text-sm text-muted-foreground">
+          ברירת המחדל אנונימית. מעבר לפתוחה אפשרי רק לפני הנעילה, ואחרי אזהרה. הדירוג הארצי וחוכמת ההמונים נשארים בלי ניחוש
+          של אדם. המייל לא מוצג.
+        </p>
+        {locked ? (
+          <p className="text-sm">אחרי הנעילה אי אפשר לשנות את הכלל. מי שניחש ידע אותו מראש.</p>
+        ) : (
+          <VisibilityForm code={group.code} visibility={group.visibility} revealBeforeLock={group.revealBeforeLock} />
+        )}
+        {visibilityLog.length > 0 ? (
+          <div className="space-y-1 text-sm">
+            <h3 className="font-medium">שינויים בכלל</h3>
+            <ul className="space-y-1 text-muted-foreground">
+              {visibilityLog.map((row) => (
+                <li key={row.changedAt}>
+                  {formatWhen(row.changedAt)} · {row.fromVisibility === "open" ? "פתוחה" : "אנונימית"} שונתה ל
+                  {row.toVisibility === "open" ? "פתוחה" : "אנונימית"}
+                  {row.toVisibility === "open"
+                    ? row.toRevealBeforeLock
+                      ? ", גלוי גם לפני הנעילה"
+                      : ", גלוי אחרי הנעילה"
+                    : ""}
+                  . {row.via === "backup" ? "קישור הגיבוי" : "החשבון המנהל"}.
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="mt-6 space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+        <h2 className="font-heading text-2xl">הקבוצה</h2>
+        <ActionForm action={updateGroupAction}>
+          <input type="hidden" name="code" value={group.code} />
+          <div className="space-y-1.5">
+            <Label htmlFor="gname">שם</Label>
+            <Input id="gname" name="name" required minLength={2} maxLength={40} defaultValue={group.name} className="h-11" />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="electionStart">פתיחת הקלפיות, שעון ישראל</Label>
+              <Input
+                id="electionStart"
+                name="electionStart"
+                type="datetime-local"
+                required
+                className="h-11"
+                defaultValue={isoToJerusalemLocal(group.electionStart)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="gdeadline">נעילה מוקדמת, שעון ישראל</Label>
+              <Input
+                id="gdeadline"
+                name="deadline"
+                type="datetime-local"
+                className="h-11"
+                defaultValue={group.deadline ? isoToJerusalemLocal(group.deadline) : ""}
+              />
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {schedule.reason === "manual"
+              ? `נעילה בפועל: ${formatWhen(schedule.lockAt)}, נעילה מוקדמת.`
+              : `נעילה בפועל: ${formatWhen(schedule.lockAt)}, פתיחת הקלפיות.`}{" "}
+            נעילה מוקדמת יכולה רק להקדים את פתיחת הקלפיות.
+          </p>
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" name="clearDeadline" value="1" className="mt-1" />
+            בלי נעילה מוקדמת
+          </label>
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" name="publicBoard" value="1" defaultChecked={group.publicBoard} className="mt-1" />
+            הקבוצה מופיעה בדירוג הארצי
+          </label>
+          <div className="space-y-1.5">
+            <Label htmlFor="stake">השתתפות בשקלים, 0 בלי קופה</Label>
+            <Input id="stake" name="stakeIls" inputMode="decimal" defaultValue={stakeValue} className="h-11" />
+          </div>
+          <fieldset className="space-y-2 text-sm">
+            <legend className="font-medium">חלוקת הקופה</legend>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="splitPreset" value="100" defaultChecked={splitPreset === "100"} />
+              המנצח לוקח הכל
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="splitPreset" value="60/30/10" defaultChecked={splitPreset === "60/30/10"} />
+              60/30/10 לשלושת הראשונים
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="splitPreset" value="custom" defaultChecked={splitPreset === "custom"} />
+              אחרת
+            </label>
+            <Input
+              name="splitCustom"
+              defaultValue={splitPreset === "custom" ? splitText : ""}
+              placeholder="50/30/20"
+              className="h-11"
+            />
+            <p className="text-muted-foreground">אחוזים שלמים שסכומם 100. תיקו מחלק שווה בשווה את המקומות שהם תופסים.</p>
+          </fieldset>
+          <p className="text-sm text-muted-foreground">{STAKE_NOTE}</p>
+          <Button type="submit" className="h-11">
+            שמירה
+          </Button>
+        </ActionForm>
+        <ActionForm action={lockNow}>
+          <input type="hidden" name="code" value={group.code} />
+          <Button type="submit" variant="outline" className="h-11">
+            נעילה עכשיו
+          </Button>
+        </ActionForm>
+      </section>
+
+      <section className="mt-6 space-y-2">
+        <h2 className="font-heading text-2xl">משתתפים</h2>
+        <p className="text-sm text-muted-foreground">
+          רואים מי נכנס ואם הניחוש שלו שלם. את המנדטים עצמם רואים בדף הקבוצה, ורק לפי כלל החשיפה. סימון התשלום גלוי רק כאן.
+        </p>
+        {people.length === 0 ? <p className="text-sm">עוד אין משתתפים.</p> : null}
+        {people.length > 0 ? (
+          <ActionForm action={markPaidAction} className="space-y-3 rounded-xl bg-card p-3 ring-1 ring-foreground/10">
+            <input type="hidden" name="code" value={group.code} />
+            <ul className="divide-y divide-border">
+              {people.map((person) => (
+                <li key={person.alias} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <label className="flex min-w-0 items-center gap-2">
+                    <input type="checkbox" name="paid" value={person.alias} defaultChecked={person.paid} />
+                    <span className="truncate">
+                      {person.alias}
+                      <span className="block text-xs text-muted-foreground">{formatWhen(person.joinedAt)}</span>
+                    </span>
+                  </label>
+                  <span className="shrink-0 text-muted-foreground">{person.complete ? "ניחוש שלם" : "עדיין לא 120"}</span>
+                </li>
+              ))}
+            </ul>
+            <Button type="submit" variant="outline" className="h-11">
+              שמירת תשלומים
+            </Button>
+          </ActionForm>
+        ) : null}
+      </section>
+    </Shell>
+  );
+}
