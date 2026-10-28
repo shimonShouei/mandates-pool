@@ -75,7 +75,7 @@ SQLite לא נשמר על ורסל. צריך Postgres.
 
 האתר בנוי ל-Vercel Hobby ול-Neon החינמי, בלי להסתמך על cron תכוף.
 
-- Hobby מריץ משימה מתוזמנת פעם ביום לכל היותר. `vercel.json` קובע `0 3 * * *` על `/api/cron/refresh-results`. הרענון האמיתי הוא לפי דרישה.
+- Hobby מריץ משימה מתוזמנת פעם ביום לכל היותר. `vercel.json` קובע `0 3 * * *` על `/api/cron/refresh-results`. עדכון כל שעתיים הוא קריאה חיצונית לאותו נתיב: `GET` או `POST` עם הכותרת `Authorization: Bearer <CRON_SECRET>`. הקריאה לא דורסת תוצאה שמורה אם מה שנמשך ישן יותר, עם פחות קולות, או עם אחוז ספירה נמוך יותר. תוצאה שמסומנת סופית נשארת, והקריאה חוזרת בלי למשוך שוב.
 - פתיחת הדירוג הארצי (`GET /api/leaderboard`) או דירוג הקבוצה הציבורי (`GET /api/groups/[code]/standings`) בודקת אם מותר למשוך. מנעול על `last_fetch_attempt_at` מבטיח משיכה אחת לכל היותר בכל שלוש דקות, לכל המבקרים יחד.
 - כל כתובת מקבלת עד 4 שניות, והלולאה נעצרת אחרי 7 שניות. כך הרענון נכנס במגבלת הפונקציה של Hobby, בערך 10 שניות.
 - הדירוג של כל קבוצה והדירוג הארצי מחושבים פעם אחת כשמשתנים התוצאה, הניחושים, משקל הבונוס או רשימת הקבוצות, ונשמרים ב-`board_cache`. אחר כך קוראים את הצילום.
@@ -105,13 +105,11 @@ Auth.js (חבילת `next-auth`) עם שתי דרכים, בלי סיסמה שנ�
 
 ## מאיפה מגיעות התוצאות
 
-נבדק ב-25 באוקטובר 2026, יומיים לפני הבחירות לכנסת ה-26 (27 באוקטובר 2026). התוצאות הסופיות אמורות להתפרסם ברשומות עד 4 בנובמבר 2026.
+נבדק ב-28 באוקטובר 2026, למחרת הבחירות לכנסת ה-26. התוצאות הסופיות אמורות להתפרסם ברשומות עד 4 בנובמבר 2026.
 
-- `https://votes26.bechirot.gov.il/nationalresults` החזיר 404. אתר התוצאות של הכנסת ה-26 עוד לא עלה.
-- `https://cdn-votes26.bechirot.gov.il/` נתקע בלי מענה מהסביבה הזו.
-- `https://votes25.bechirot.gov.il/nationalresults` הוא דף התוצאות הסופיות של הכנסת ה-25 (1 בנובמבר 2022). מהסביבה הזו קלאודפרונט החזיר HTTP 202 עם `x-amzn-waf-action: challenge`, בלי גוף של תוצאות.
-- הדף עצמו, כשמצליחים לקרוא אותו, הוא **HTML ולא JSON**. יש טבלת סיכום (בעלי זכות בחירה, קולות שהוזנו, שיעור הצבעה, קולות כשרים, קולות פסולים) וטבלת רשימות: שם, אותיות, מנדטים, אחוז, קולות. בכותרת «תוצאות סופיות» הספירה מסומנת כסופית. בדף ארעי בלי עמודת מנדטים מחשבים את המושבים מהקולות.
-- לא נמצא פיד JSON ארצי יציב. ב-data.gov.il יש CSV של הוועדה לפי קלפי וליישוב לכנסות 18–25. זה ארכיון סופי, לא ספירה חיה, ולכן הוא לא המקור של ליל הבחירות.
+- `https://votes26.bechirot.gov.il/nationalresults` עלה. משרת מחוץ לישראל מקבל אתגר WAF של קלאודפרונט (HTTP 202) או דף חסימה של gov.il, לא את הטבלה. אחרי זה נקרא אותו דף רשמי דרך קורא HTML (`RESULTS_READER_URL`, ברירת מחדל `https://r.jina.ai/`).
+- הדף של 2026 הוא HTML. בכרטיסים: בעלי זכות בחירה, קולות עד עתה, קלפיות, קולות כשרים, קולות פסולים. בטבלה: שם, אותיות, אחוז, קולות. אין עמודת מנדטים בספירה חלקית, ואין אחוז ספירה מפורש. השורה «תוצאות נכון ל-» היא חותמת הזמן. «התוצאות הסופיות … יפורסמו» היא לוח הזמנים החוקי, לא סימון שהספירה נסגרה.
+- `fixtures/votes26-national.html` הוא קטע מהדף נכון ל-28.10.2026 12:32 (שעון ישראל). אפשר להעלות אותו ידנית אם המשיכה נכשלת.
 
 המפרש נבדק מול `fixtures/votes25-national.html`: שחזור הטבלה הרשמית של 2022, 40 רשימות, 4,764,742 קולות כשרים. אם המקור החי חסום גם מורסל, המנהל שומר את דף התוצאות מהדפדפן ומעלה אותו, או מזין מנדטים ידנית. ההזנה הידנית תמיד עובדת, והיא עוצרת את הדריסה האוטומטית עד שלוחצים «ביטול העקיפה».
 
@@ -185,7 +183,7 @@ Install from Chrome or Edge with “Install app” / “Add to home screen”. O
 
 The app is meant to run on Vercel Hobby and Neon’s free plan, without a frequent cron.
 
-- Hobby runs a scheduled job at most once a day. `vercel.json` sets `0 3 * * *` on `/api/cron/refresh-results`, which is one run a day. Freshness comes from on-demand refresh.
+- Hobby runs a scheduled job at most once a day. `vercel.json` sets `0 3 * * *` on `/api/cron/refresh-results`. A refresh every two hours is an external `GET` or `POST` to that path with `Authorization: Bearer <CRON_SECRET>`. The call does not replace a stored count with an older file, fewer votes, or a lower counted percent. A snapshot marked final stays, and the call returns without fetching again.
 - Opening the national board (`GET /api/leaderboard`) or a public group board (`GET /api/groups/[code]/standings`) checks a lock on `last_fetch_attempt_at`. The Central Elections Committee is fetched at most once every three minutes, across all visitors.
 - Each candidate URL gets 4 seconds, and the loop stops after 7 seconds, inside Hobby’s function limit of about 10 seconds.
 - Group boards and the national board are computed once per change of results, guesses, bonus weight, or group list, and stored in `board_cache`. Later reads serve that snapshot.
@@ -217,13 +215,11 @@ Five signed surplus agreements are inserted by the migration when that ballot pa
 
 ## Official results
 
-Checked on 25 October 2026, two days before the 26th-Knesset election (27 October 2026). Final results are due in Reshumot by 4 November 2026.
+Checked on 28 October 2026, the day after the 26th-Knesset election. Final results are due in Reshumot by 4 November 2026.
 
-- `https://votes26.bechirot.gov.il/nationalresults` returned 404. The 26th-Knesset results host is not up yet.
-- `https://cdn-votes26.bechirot.gov.il/` timed out from this environment.
-- `https://votes25.bechirot.gov.il/nationalresults` is the final 2022 page. From this environment CloudFront returned HTTP 202 with `x-amzn-waf-action: challenge` and no results body.
-- The page itself is **HTML, not a JSON API**: a summary table (eligible voters, ballots, turnout, valid votes, invalid votes) and a list table (name, ballot letters, mandates, percent, votes). A heading of "final results" marks the count final. A provisional page without a mandates column is allocated from the vote counts.
-- No stable national JSON feed was found. data.gov.il hosts CEC CSVs per ballot and locality for Knessets 18–25. That is a final archive, not the live count, so it is not the election-night source.
+- `https://votes26.bechirot.gov.il/nationalresults` is up. A server outside Israel receives a CloudFront WAF challenge (HTTP 202) or the gov.il block page, not the table. The same official URL is then read as HTML through `RESULTS_READER_URL` (default `https://r.jina.ai/`).
+- The 2026 page is HTML. Cards give eligible voters, ballots so far, polling stations, valid votes, and invalid votes. The table is name, ballot letters, percent, and votes. A partial count has no mandate column and no explicit percent-counted figure. The line "results as of" is the timestamp. "Final results will be published…" is the legal deadline, not a closed count.
+- `fixtures/votes26-national.html` is the results region of that page as of 28 Oct 2026 12:32 Israel time. Upload it by hand if the fetch fails.
 
 The parser is tested against `fixtures/votes25-national.html`, a reconstruction of the official 2022 national table (40 lists, 4,764,742 valid votes) because the live host could not be downloaded through the WAF. If Vercel is blocked too, the admin uploads the HTML saved from a browser, or enters seats by hand. Manual entry always works and pauses automatic overwrite until "resume" is clicked.
 

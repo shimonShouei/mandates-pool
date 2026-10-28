@@ -1,9 +1,10 @@
 import { bearerMatches } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { refreshSite } from "@/lib/refresh";
+import { scheduledResultsRefresh } from "@/lib/refresh";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 10;
 
 async function run(request: Request) {
   const secret = process.env.CRON_SECRET;
@@ -11,8 +12,8 @@ async function run(request: Request) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
   const db = await getDb();
-  const outcome = await refreshSite(db);
-  return Response.json({ ok: true, refreshed: outcome.refreshed, error: outcome.error ?? null });
+  const report = await scheduledResultsRefresh(db);
+  return Response.json(report);
 }
 
 export function GET(request: Request) {

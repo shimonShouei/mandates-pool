@@ -18,6 +18,7 @@ import { cleanCrowdMin, DEFAULT_CROWD_MIN } from "./crowd";
 import { parsePayoutSplit, parseStoredSplit } from "./payout";
 import { cleanThresholdBonus, roundScore, scoreGuess, DEFAULT_THRESHOLD_BONUS } from "./scoring";
 import { KNESSET_SEATS, checkSeatVector } from "./seats";
+import { formatNumber } from "./format";
 import { betsLocked, isLocked, lockSchedule, pollsOpenIso } from "./time";
 
 export class GameError extends Error {
@@ -842,10 +843,24 @@ export async function applyParsedResults(
     validVotes: parsed.validVotes,
     invalidVotes: parsed.invalidVotes,
     scoreable: decision.scoreable,
-    note: decision.warnings.length ? decision.warnings.join("\n") : null,
+    note: resultNote(parsed, decision.warnings),
     rows: decision.rows,
   });
   return decision;
+}
+
+function resultNote(parsed: ParsedResults, warnings: string[]): string | null {
+  const parts = [...warnings];
+  if (parsed.status !== "final" && parsed.countedPercent == null && parsed.ballotsCast != null) {
+    const ballots = formatNumber(parsed.ballotsCast);
+    const eligible = parsed.eligibleVoters != null ? formatNumber(parsed.eligibleVoters) : null;
+    parts.unshift(
+      eligible
+        ? `נקלטו ${ballots} קולות מתוך ${eligible} בעלי זכות בחירה. הדף לא מפרסם אחוז ספירה.`
+        : `נקלטו ${ballots} קולות. הדף לא מפרסם אחוז ספירה.`,
+    );
+  }
+  return parts.length ? parts.join("\n") : null;
 }
 
 export async function saveManualResults(

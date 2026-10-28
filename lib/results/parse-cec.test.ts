@@ -59,4 +59,27 @@ describe("CEC results parser", () => {
     });
     expect(parsed?.lists[0]).toMatchObject({ ballot: "מחל", votes: 500000, officialSeats: null });
   });
+
+  it("reads the 2026 national page: cards, no mandate column, and the as-of clock", () => {
+    const html = readFileSync(path.join(process.cwd(), "fixtures/votes26-national.html"), "utf8");
+    const parsed = parseCecHtml(html);
+    expect(parsed).not.toBeNull();
+    if (!parsed) return;
+    expect(parsed.status).toBe("provisional");
+    expect(parsed.countedPercent).toBeNull();
+    expect(parsed.turnoutPercent).toBeNull();
+    expect(parsed.eligibleVoters).toBe(7331981);
+    expect(parsed.ballotsCast).toBe(4421561);
+    expect(parsed.validVotes).toBe(4401898);
+    expect(parsed.invalidVotes).toBe(19663);
+    expect(parsed.reportedAt).toBe("2026-10-28T10:32:00.000Z");
+    expect(parsed.lists).toHaveLength(38);
+    expect(parsed.lists.find((list) => list.ballot === "מחל")).toMatchObject({
+      votes: 917371,
+      officialSeats: null,
+    });
+    expect(parsed.lists.find((list) => list.ballot === "דרך")?.votes).toBe(723703);
+    expect(parsed.lists.every((list) => list.officialSeats == null)).toBe(true);
+    expect(parsed.lists.reduce((sum, list) => sum + (list.votes ?? 0), 0)).toBe(4401898);
+  });
 });

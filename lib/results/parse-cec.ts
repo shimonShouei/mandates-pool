@@ -1,3 +1,5 @@
+import { jerusalemLocalToIso } from "../time";
+
 export type ParsedList = {
   name: string;
   ballot: string;
@@ -16,6 +18,8 @@ export type ParsedResults = {
   invalidVotes: number | null;
   lists: ParsedList[];
   format: string;
+  /** Official "results as of" instant, when the page prints one. */
+  reportedAt?: string | null;
 };
 
 export function parseCecPayload(body: string): ParsedResults | null {
@@ -53,34 +57,35 @@ export function parseCecHtml(html: string): ParsedResults | null {
 
   if (lists.length === 0) return null;
 
+  const cards = readInfoCards(html);
   const plain = stripTags(html);
   let status: ParsedResults["status"] = "provisional";
+  // "התוצאות הסופיות … יפורסמו" is the legal deadline, not a final count.
+  // A final page says "תוצאות סופיות" with no ה before סופיות.
   if (/תוצאות\s+סופיות/.test(plain)) status = "final";
   else if (/ארעי/.test(plain)) status = "provisional";
 
-  let countedPercent = summary.countedPercent ?? coverageFromText(plain);
+  let countedPercent = summary.countedPercent ?? cards.countedPercent ?? coverageFromText(plain);
   if (countedPercent == null && status === "final") countedPercent = 100;
 
-  let turnoutPercent = summary.turnoutPercent ?? null;
-  if (
-    turnoutPercent == null &&
-    summary.eligibleVoters &&
-    summary.ballotsCast &&
-    summary.eligibleVoters > 0
-  ) {
-    turnoutPercent = (summary.ballotsCast / summary.eligibleVoters) * 100;
+  const eligibleVoters = summary.eligibleVoters ?? cards.eligibleVoters ?? null;
+  const ballotsCast = summary.ballotsCast ?? cards.ballotsCast ?? null;
+  let turnoutPercent = summary.turnoutPercent ?? cards.turnoutPercent ?? null;
+  if (turnoutPercent == null && status === "final" && eligibleVoters && ballotsCast && eligibleVoters > 0) {
+    turnoutPercent = (ballotsCast / eligibleVoters) * 100;
   }
 
   return {
     status,
     countedPercent,
     turnoutPercent,
-    eligibleVoters: summary.eligibleVoters ?? null,
-    ballotsCast: summary.ballotsCast ?? null,
-    validVotes: summary.validVotes ?? null,
-    invalidVotes: summary.invalidVotes ?? null,
+    eligibleVoters,
+    ballotsCast,
+    validVotes: summary.validVotes ?? cards.validVotes ?? null,
+    invalidVotes: summary.invalidVotes ?? cards.invalidVotes ?? null,
     lists,
     format: "cec-html-table",
+    reportedAt: reportedAtFromText(plain),
   };
 }
 
@@ -124,6 +129,7 @@ export function parseCecJson(data: unknown): ParsedResults | null {
     invalidVotes: integerOrNull(firstNumber(root, ["invalid", "invalidVotes"])),
     lists,
     format: "cec-json",
+    reportedAt: null,
   };
 }
 
@@ -182,6 +188,34 @@ function isSummaryTable(headers: string[]): boolean {
 function isPartyTable(headers: string[]): boolean {
   const joined = headers.join(" ");
   return joined.includes("שם") && (joined.includes("קולות") || joined.includes("מנדט") || joined.includes("אות"));
+}
+
+/** 2026 national page: label div, then a bold div with the figure. Not a summary table. */
+function readInfoCards(html: string): Partial<ParsedResults> {
+  const out: Partial<ParsedResults> = {};
+  const re =
+    /<div[^>]*>\s*(מספר בעלי זכות בחירה|קולות עד עתה|קולות שהוזנו|קולות כשרים עד עתה|קולות פסולים עד עתה|שיעור ההצבעה|אחוז הקולות שנספרו|אחוז כיסוי)\s*<\/div>\s*<div[^>]*>\s*([\d][\d,.]*)\s*%?/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html))) {
+    const label = match[1];
+    const value = parseNumber(match[2]);
+    if (value == null) continue;
+    if (label.includes("בעלי זכות")) out.eligibleVoters = Math.round(value);
+    else if (label.includes("פסול")) out.invalidVotes = Math.round(value);
+    else if (label.includes("כשר")) out.validVotes = Math.round(value);
+    else if (label.includes("הצבעה") || label.includes("נספרו") || label.includes("כיסוי")) {
+      if (label.includes("הצבעה")) out.turnoutPercent = value;
+      else out.countedPercent = value;
+    } else if (label.includes("קולות")) out.ballotsCast = Math.round(value);
+  }
+  return out;
+}
+
+function reportedAtFromText(text: string): string | null {
+  const match = text.match(/תוצאות נכון ל-\s*(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
+  if (!match) return null;
+  const [, day, month, year, hour, minute] = match;
+  return jerusalemLocalToIso(`${year}-${month}-${day}T${hour}:${minute}`);
 }
 
 function coverageFromText(text: string): number | null {
