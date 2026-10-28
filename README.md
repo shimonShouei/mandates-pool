@@ -77,7 +77,7 @@ SQLite לא נשמר על ורסל. צריך Postgres.
 
 - Hobby מריץ משימה מתוזמנת פעם ביום לכל היותר. `vercel.json` קובע `0 3 * * *` על `/api/cron/refresh-results`. עדכון כל שעתיים הוא קריאה חיצונית לאותו נתיב: `GET` או `POST` עם הכותרת `Authorization: Bearer <CRON_SECRET>`. הקריאה לא דורסת תוצאה שמורה אם מה שנמשך ישן יותר, עם פחות קולות, או עם אחוז ספירה נמוך יותר. תוצאה שמסומנת סופית נשארת, והקריאה חוזרת בלי למשוך שוב.
 - פתיחת הדירוג הארצי (`GET /api/leaderboard`) או דירוג הקבוצה הציבורי (`GET /api/groups/[code]/standings`) בודקת אם מותר למשוך. מנעול על `last_fetch_attempt_at` מבטיח משיכה אחת לכל היותר בכל שלוש דקות, לכל המבקרים יחד.
-- כל כתובת מקבלת עד 4 שניות, והלולאה נעצרת אחרי 7 שניות. כך הרענון נכנס במגבלת הפונקציה של Hobby, בערך 10 שניות.
+- רענון של דף קבוצה נשאר קצר. הנתיב `/api/cron/refresh-results` רץ עד 60 שניות. הקריאה לקורא ה-HTML היא עד 45 שניות, עם ניסיון שני רק אם הראשון נכשל מהר. אם הזמן נגמר, חוזר JSON והתוצאה השמורה נשארת.
 - הדירוג של כל קבוצה והדירוג הארצי מחושבים פעם אחת כשמשתנים התוצאה, הניחושים, משקל הבונוס או רשימת הקבוצות, ונשמרים ב-`board_cache`. אחר כך קוראים את הצילום.
 - התשובות הציבוריות נשלחות עם `Cache-Control: public, max-age=0, s-maxage=30, stale-while-revalidate=120`. הדפדפן לא שומר אותן. ה-CDN יכול להחזיק חצי דקה, ועוד שתי דקות של עותק ישן בזמן שהוא מרענן.
 - הניחוש הפרטי הוא `GET /api/groups/[code]/me` עם `private, no-store`. הוא לא מושך את ועדת הבחירות, והדף מבקש אותו רק כשחותמת התוצאות משתנה.
@@ -185,7 +185,7 @@ The app is meant to run on Vercel Hobby and Neon’s free plan, without a freque
 
 - Hobby runs a scheduled job at most once a day. `vercel.json` sets `0 3 * * *` on `/api/cron/refresh-results`. A refresh every two hours is an external `GET` or `POST` to that path with `Authorization: Bearer <CRON_SECRET>`. The call does not replace a stored count with an older file, fewer votes, or a lower counted percent. A snapshot marked final stays, and the call returns without fetching again.
 - Opening the national board (`GET /api/leaderboard`) or a public group board (`GET /api/groups/[code]/standings`) checks a lock on `last_fetch_attempt_at`. The Central Elections Committee is fetched at most once every three minutes, across all visitors.
-- Each candidate URL gets 4 seconds, and the loop stops after 7 seconds, inside Hobby’s function limit of about 10 seconds.
+- A group-page refresh stays short. `/api/cron/refresh-results` may run for 60 seconds. The HTML reader gets up to 45 seconds, and a second try only if the first one fails quickly. A timeout returns JSON and leaves the stored count in place.
 - Group boards and the national board are computed once per change of results, guesses, bonus weight, or group list, and stored in `board_cache`. Later reads serve that snapshot.
 - Public responses use `Cache-Control: public, max-age=0, s-maxage=30, stale-while-revalidate=120`. Browsers do not keep them. The CDN may keep them for 30 seconds, plus two minutes of a stale copy while it refreshes.
 - A person’s own bet is `GET /api/groups/[code]/me` with `private, no-store`. That route does not fetch the committee, and the page asks for it only when the results timestamp changes.

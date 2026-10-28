@@ -64,6 +64,48 @@ describe("official fetch", () => {
     expect(outcome.parsed.status).toBe("provisional");
   });
 
+  it("sends reader headers, retries a timeout once, and returns JSON-level failure", async () => {
+    const html = readFileSync(path.join(process.cwd(), "fixtures/votes26-national.html"), "utf8");
+    const seen: { timeout: string | null; format: string | null }[] = [];
+    let readerCalls = 0;
+    const recovered = await fetchOfficialResults({
+      knessetNumber: 26,
+      sourceUrl: "https://votes26.bechirot.gov.il/nationalresults",
+      readerTimeoutMs: 45_000,
+      readerRetries: 1,
+      fetchImpl: async (input, init) => {
+        const url = String(input);
+        if (!url.includes("r.jina.ai")) {
+          return response("<html>awsWaf challenge</html>", 202, { "x-amzn-waf-action": "challenge" });
+        }
+        readerCalls += 1;
+        const headers = new Headers(init?.headers);
+        seen.push({ timeout: headers.get("x-timeout"), format: headers.get("x-return-format") });
+        if (readerCalls === 1) throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+        return response(html);
+      },
+    });
+    expect(readerCalls).toBe(2);
+    expect(seen[0]).toEqual({ timeout: "42", format: "html" });
+    expect(recovered.ok).toBe(true);
+
+    const timedOut = await fetchOfficialResults({
+      knessetNumber: 26,
+      sourceUrl: "https://votes26.bechirot.gov.il/nationalresults",
+      readerTimeoutMs: 45_000,
+      readerRetries: 1,
+      fetchImpl: async (input) => {
+        const url = String(input);
+        if (!url.includes("r.jina.ai")) {
+          return response("<html>awsWaf challenge</html>", 202, { "x-amzn-waf-action": "challenge" });
+        }
+        throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      },
+    });
+    expect(timedOut.ok).toBe(false);
+    if (!timedOut.ok) expect(timedOut.error).toContain("עבר הזמן");
+  });
+
   it("explains a missing results site", async () => {
     const outcome = await fetchOfficialResults({
       knessetNumber: 26,

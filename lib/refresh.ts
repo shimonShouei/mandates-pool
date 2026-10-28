@@ -1,7 +1,7 @@
 import type { Db } from "./db";
 import { applyParsedResults, getSite, listAgreements, listCatalog } from "./game";
 import { decideSeats } from "./results/decide";
-import { fetchOfficialResults, type FetchOutcome } from "./results/fetch-official";
+import { cronReaderOptions, fetchOfficialResults, type FetchOutcome } from "./results/fetch-official";
 import type { ParsedResults } from "./results/parse-cec";
 
 const STALE_MS = 3 * 60 * 1000;
@@ -141,7 +141,9 @@ export async function scheduledResultsRefresh(
   const site = await getSite(db);
   const stamp = (options?.now ?? new Date()).toISOString();
   await db.run(`UPDATE site SET last_fetch_attempt_at = ? WHERE id = 'site'`, [stamp]);
-  const fetcher = options?.fetcher ?? ((input: { knessetNumber: number }) => fetchOfficialResults(input));
+  const fetcher =
+    options?.fetcher ??
+    ((input: { knessetNumber: number }) => fetchOfficialResults({ ...input, ...cronReaderOptions }));
   let result: FetchOutcome;
   try {
     result = await fetcher({ knessetNumber: site.knessetNumber });
