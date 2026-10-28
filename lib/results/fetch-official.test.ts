@@ -50,7 +50,10 @@ describe("official fetch", () => {
       sourceUrl: "",
       fetchImpl: async (input) => {
         const url = String(input);
-        if (url.includes("r.jina.ai")) return response(html);
+        if (url.includes("r.jina.ai")) {
+          if (!url.includes("lang=he")) return response("missing query", 404);
+          return response(html);
+        }
         return response("<html>awsWaf challenge</html>", 202, { "x-amzn-waf-action": "challenge" });
       },
     });

@@ -16,7 +16,9 @@ export function readerResultUrl(knessetNumber: number, base: string | null | und
   if (base === "") return null;
   const prefix = (base == null ? "https://r.jina.ai/" : base).trim();
   if (!prefix) return null;
-  return `${prefix.replace(/\/$/, "")}/${officialNationalUrl(knessetNumber)}`;
+  // ?lang=he is the URL a plain HTTP reader can retrieve. The bare path
+  // currently comes back as an AWS WAF challenge from outside Israel.
+  return `${prefix.replace(/\/$/, "")}/${officialNationalUrl(knessetNumber)}?lang=he`;
 }
 
 export function candidateResultUrls(knessetNumber: number, sourceUrl?: string | null): string[] {
